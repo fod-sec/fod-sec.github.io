@@ -45,6 +45,24 @@ export type ProgramRecord = {
   updatedAt?: unknown;
 };
 
+export type ContestCriterion = {
+  id: string;
+  item: string;
+  percentage: number;
+};
+
+export type ContestEntry = {
+  id: string;
+  programId: string;
+  name: string;
+  date: string;
+  time: string;
+  mechanics: string;
+  criteria: ContestCriterion[];
+  createdAt?: unknown;
+  updatedAt?: unknown;
+};
+
 export type AttendeeRecord = {
   id: string;
   programId: string;

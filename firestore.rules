@@ -55,6 +55,22 @@ service cloud.firestore {
         && data.createdAt == request.time;
     }
 
+    function validContest(data) {
+      return data.keys().hasAll([
+          'programId', 'name', 'date', 'time', 'mechanics', 'criteria', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'programId', 'name', 'date', 'time', 'mechanics', 'criteria', 'createdAt', 'updatedAt'
+        ])
+        && data.programId is string && data.programId.size() > 0 && data.programId.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 180
+        && data.date is string && data.date.size() == 10
+        && data.time is string && data.time.size() == 5
+        && data.mechanics is string && data.mechanics.size() <= 20000
+        && data.criteria is list && data.criteria.size() > 0 && data.criteria.size() <= 40
+        && data.updatedAt == request.time;
+    }
+
     match /admins/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list: if isAdmin();
@@ -64,6 +80,19 @@ service cloud.firestore {
     match /programs/{programId} {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();
+    }
+
+    match /contests/{contestId} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && validContest(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/programs/$(request.resource.data.programId));
+      allow update: if isAdmin()
+        && validContest(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && exists(/databases/$(database)/documents/programs/$(request.resource.data.programId));
+      allow delete: if isAdmin();
     }
 
     match /attendees/{attendeeId} {

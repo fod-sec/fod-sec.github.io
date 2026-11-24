@@ -12,14 +12,14 @@ import {
 import {
   ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown,
   CircleHelp, ClipboardList, DoorOpen, Edit3, FilePlus2, Flower2, KeyRound,
-  LoaderCircle, LogOut, Mail, MapPin, Plus, Trash2, UsersRound,
+  LoaderCircle, LogOut, Mail, MapPin, Plus, Trash2, Trophy, UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import locations from "@/data/locations.json";
-import { auth, db, type AttendeeRecord, type AttendeeSummary, type ProgramFlowItem, type ProgramRecord, type RoomAssignment, type RoomRecord } from "@/lib/firebase";
+import { auth, db, type AttendeeRecord, type AttendeeSummary, type ContestCriterion, type ContestEntry, type ProgramFlowItem, type ProgramRecord, type RoomAssignment, type RoomRecord } from "@/lib/firebase";
 
-type View = "home" | "program" | "rooms" | "programs" | "room-management";
+type View = "home" | "program" | "contest" | "rooms" | "programs" | "contest-entries" | "room-management";
 type Role = "guest" | "admin" | null;
 type GeoCity = { name: string; barangays: string[] };
 type GeoProvince = { name: string; cities: GeoCity[] };
@@ -100,6 +100,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; kind: "success" | "error" } | null>(null);
   const [programs, setPrograms] = useState<ProgramRecord[]>([]);
+  const [contests, setContests] = useState<ContestEntry[]>([]);
   const [summaries, setSummaries] = useState<AttendeeSummary[]>([]);
   const [attendees, setAttendees] = useState<AttendeeRecord[]>([]);
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
@@ -110,7 +111,9 @@ export default function Home() {
   const [attendanceOpen, setAttendanceOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [programModal, setProgramModal] = useState<ProgramRecord | "new" | null>(null);
+  const [contestModal, setContestModal] = useState<ContestEntry | "new" | null>(null);
   const [roomModal, setRoomModal] = useState<RoomRecord | "new" | null>(null);
+  const [deleteContestTarget, setDeleteContestTarget] = useState<ContestEntry | null>(null);
   const [deleteRoomTarget, setDeleteRoomTarget] = useState<RoomRecord | null>(null);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
@@ -160,13 +163,16 @@ export default function Home() {
     const stopPrograms = onSnapshot(query(collection(db, "programs"), orderBy("dateFrom", "asc")), (snapshot) => {
       setPrograms(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ProgramRecord)));
     }, (error) => notice(friendlyError(error), "error"));
+    const stopContests = onSnapshot(collection(db, "contests"), (snapshot) => {
+      setContests(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ContestEntry)));
+    }, (error) => notice(friendlyError(error), "error"));
     const stopSummaries = onSnapshot(collection(db, "attendeeSummaries"), (snapshot) => {
       setSummaries(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as AttendeeSummary)));
     }, (error) => notice(friendlyError(error), "error"));
     const stopAssignments = onSnapshot(collection(db, "roomAssignments"), (snapshot) => {
       setAssignments(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as RoomAssignment)));
     }, (error) => notice(friendlyError(error), "error"));
-    return () => { stopPrograms(); stopSummaries(); stopAssignments(); };
+    return () => { stopPrograms(); stopContests(); stopSummaries(); stopAssignments(); };
   }, [role, notice]);
 
   useEffect(() => {
@@ -216,6 +222,7 @@ export default function Home() {
     };
   }, [selectedSummaries]);
   const programRooms = rooms.filter((room) => room.programId === selectedProgramId);
+  const programContests = contests.filter((contest) => contest.programId === selectedProgramId);
   const programAssignments = assignments.filter((assignment) => assignment.programId === selectedProgramId);
   const unassignedCount = attendees.filter((attendee) => attendee.programId === selectedProgramId && attendee.billeting === "Yes" && !programAssignments.some((entry) => entry.attendeeId === attendee.id)).length;
 
@@ -262,7 +269,7 @@ export default function Home() {
     window.localStorage.removeItem(ACCESS_STORAGE_KEY);
     await signOut(auth);
     setView("home");
-    setPrograms([]); setSummaries([]); setAssignments([]); setAttendees([]); setRooms([]);
+    setPrograms([]); setContests([]); setSummaries([]); setAssignments([]); setAttendees([]); setRooms([]);
   }
 
   async function saveProgram(values: Omit<ProgramRecord, "id">, id?: string) {
@@ -288,6 +295,32 @@ export default function Home() {
     try {
       await deleteDoc(doc(db, "programs", program.id));
       notice("Program removed.");
+    } catch (error) { notice(friendlyError(error), "error"); }
+  }
+
+  async function saveContest(values: Omit<ContestEntry, "id" | "createdAt" | "updatedAt">, id?: string) {
+    setBusy(true);
+    try {
+      const contestId = id ?? doc(collection(db, "contests")).id;
+      await setDoc(doc(db, "contests", contestId), {
+        ...values,
+        updatedAt: serverTimestamp(),
+        ...(id ? {} : { createdAt: serverTimestamp() }),
+      }, { merge: true });
+      setSelectedProgramId(values.programId);
+      setContestModal(null);
+      setView("contest-entries");
+      notice(id ? "Contest entry updated." : "Contest entry added.");
+    } catch (error) {
+      notice(friendlyError(error), "error");
+    } finally { setBusy(false); }
+  }
+
+  async function removeContest(contest: ContestEntry) {
+    try {
+      await deleteDoc(doc(db, "contests", contest.id));
+      setDeleteContestTarget(null);
+      notice("Contest entry removed.");
     } catch (error) { notice(friendlyError(error), "error"); }
   }
 
@@ -411,9 +444,11 @@ export default function Home() {
           <nav className="main-nav" aria-label="Main navigation">
             {role === "guest" ? <>
               <NavButton active={view === "program"} onClick={() => goTo("program")} icon={<CalendarDays size={16} />}>Program</NavButton>
+              <NavButton active={view === "contest"} onClick={() => goTo("contest")} icon={<Trophy size={16} />}>Contest</NavButton>
               <NavButton active={view === "rooms"} onClick={() => goTo("rooms")} icon={<DoorOpen size={16} />}>Room Assignment</NavButton>
             </> : <>
               <NavButton active={view === "programs"} onClick={() => goTo("programs")} icon={<CalendarDays size={16} />}>Program List</NavButton>
+              <NavButton active={view === "contest-entries"} onClick={() => goTo("contest-entries")} icon={<Trophy size={16} />}>Contest Entries</NavButton>
               <NavButton active={view === "room-management"} onClick={() => goTo("room-management")} icon={<DoorOpen size={16} />}>Room Management</NavButton>
             </>}
             <button className="logout-button" type="button" onClick={() => setLogoutConfirmOpen(true)} aria-label="Log out" title="Log out"><LogOut size={17} /></button>
@@ -443,7 +478,7 @@ export default function Home() {
       ) : <>
         <section className="page-wrap">
           <div className="welcome-row">
-            <div><span className="eyebrow"><span className="eyebrow-line" /> {role === "admin" ? "ADMIN WORKSPACE" : "EVENT WORKSPACE"}</span><h1>{view === "home" ? <>Event overview.<br /><em>Daily operations.</em></> : view === "program" ? <>Program<br /><em>schedule.</em></> : view === "rooms" ? <>Room<br /><em>assignments.</em></> : view === "programs" ? <>Program<br /><em>management.</em></> : <>Room<br /><em>management.</em></>}</h1></div>
+            <div><span className="eyebrow"><span className="eyebrow-line" /> {role === "admin" ? "ADMIN WORKSPACE" : "EVENT WORKSPACE"}</span><h1>{view === "home" ? <>Event overview.<br /><em>Daily operations.</em></> : view === "program" ? <>Program<br /><em>schedule.</em></> : view === "contest" ? <>Contest<br /><em>details.</em></> : view === "rooms" ? <>Room<br /><em>assignments.</em></> : view === "programs" ? <>Program<br /><em>management.</em></> : view === "contest-entries" ? <>Contest<br /><em>entries.</em></> : <>Room<br /><em>management.</em></>}</h1></div>
             <div className="welcome-decoration"><div className="decoration-ring"><Image src="/colored-logo.png" alt="" width={43} height={43} /></div></div>
           </div>
 
@@ -459,8 +494,10 @@ export default function Home() {
           </>}
 
           {view === "program" && <ProgramPage onViewMap={() => setMapOpen(true)} programs={programs} program={selectedProgram} onSelect={setSelectedProgramId} selectedId={selectedProgramId} flow={visibleFlow} days={flowDays} activeDay={day} onDayChange={setSelectedDay} onConfirm={() => selectedProgram && setAttendanceOpen(true)} />}
+          {view === "contest" && <ContestPage contests={programContests} programs={programs} selectedId={selectedProgramId} onSelect={setSelectedProgramId} />}
           {view === "rooms" && <RoomAssignmentPage assignments={programAssignments} programs={programs} selectedId={selectedProgramId} onSelect={setSelectedProgramId} />}
           {view === "programs" && <ProgramManagement programs={programs} onCreate={() => setProgramModal("new")} onEdit={(program) => setProgramModal(program)} onDelete={removeProgram} />}
+          {view === "contest-entries" && <ContestManagement contests={programContests} programs={programs} selectedId={selectedProgramId} onSelect={setSelectedProgramId} onCreate={() => setContestModal("new")} onEdit={(contest) => setContestModal(contest)} onDelete={setDeleteContestTarget} />}
           {view === "room-management" && <RoomManagement programs={programs} program={selectedProgram} rooms={programRooms} assignments={programAssignments} attendees={attendees.filter((entry) => entry.programId === selectedProgramId)} unassignedCount={unassignedCount} onSelect={setSelectedProgramId} onCreate={() => setRoomModal("new")} onEdit={(room) => setRoomModal(room)} onDelete={setDeleteRoomTarget} onFinalize={() => setFinalizeOpen(true)} />}
 
           <footer className="page-footer"><span>PROGRAMS · PEOPLE · PLACE</span></footer>
@@ -470,7 +507,9 @@ export default function Home() {
       {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><a className="button button-primary" href={VENUE_DIRECTIONS_URL} target="_blank" rel="noopener noreferrer">Get Direction <ArrowRight size={16} /></a></div></ModalFrame>}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
       {programModal !== null && <ProgramModal key={programModal === "new" ? "new" : programModal.id} program={programModal === "new" ? null : programModal} busy={busy} onClose={() => setProgramModal(null)} onSave={saveProgram} />}
+      {contestModal !== null && <ContestModal key={contestModal === "new" ? `new-${selectedProgramId}` : contestModal.id} programs={programs} defaultProgramId={selectedProgramId} contest={contestModal === "new" ? null : contestModal} busy={busy} onClose={() => setContestModal(null)} onSave={saveContest} />}
       {roomModal !== null && <RoomModal key={roomModal === "new" ? `new-${selectedProgramId}` : roomModal.id} programId={selectedProgramId} room={roomModal === "new" ? null : roomModal} busy={busy} onClose={() => setRoomModal(null)} onSave={saveRoom} />}
+      {deleteContestTarget && <ConfirmDialog title="Remove this contest entry?" copy={`“${deleteContestTarget.name}” and its criteria will be removed.`} confirmLabel="Remove contest" onCancel={() => setDeleteContestTarget(null)} onConfirm={() => removeContest(deleteContestTarget)} />}
       {deleteRoomTarget && <ConfirmDialog title="Remove this room?" copy={`Building ${deleteRoomTarget.building}, room ${deleteRoomTarget.roomNo} will be removed. Existing assignments for this program will be cleared.`} confirmLabel="Remove room" onCancel={() => setDeleteRoomTarget(null)} onConfirm={() => removeRoom(deleteRoomTarget)} />}
       {finalizeOpen && <ConfirmDialog title="Finalize room assignment?" copy={`This will assign attendees who requested billeting to the available rooms by sex and capacity. ${unassignedCount ? `${unassignedCount} current attendee(s) are unassigned.` : "You can edit rooms and finalize again later."}`} confirmLabel={busy ? "Assigning…" : "Finalize assignments"} busy={busy} onCancel={() => !busy && setFinalizeOpen(false)} onConfirm={finalizeRoomAssignments} />}
       {logoutConfirmOpen && <ConfirmDialog title="Log out?" copy="Are you sure you want to log out of The Secretariat?" confirmLabel="Log out" onCancel={() => setLogoutConfirmOpen(false)} onConfirm={logout} />}
@@ -523,6 +562,39 @@ function RoomAssignmentPage({ assignments, programs, selectedId, onSelect }: { a
     const peopleId = `assignment-room-${index}`;
     return <section className="assignment-room-group" key={room.key}><button type="button" className="assignment-room-toggle" aria-expanded={expanded} aria-controls={peopleId} onClick={() => setExpandedRooms((current) => ({ ...current, [room.key]: !current[room.key] }))}><span className="assignment-room-icon"><DoorOpen size={17} /></span><span className="assignment-room-label">{roomLabel}</span><span className="assignment-room-count">{room.people.length} {room.people.length === 1 ? "person" : "people"}</span><ChevronDown className={expanded ? "assignment-room-chevron is-expanded" : "assignment-room-chevron"} size={18} /></button>{expanded && <ul className="assignment-room-people" id={peopleId} aria-label={`Attendees assigned to ${roomLabel}`}>{[...room.people].sort((a, b) => a.attendeeName.localeCompare(b.attendeeName)).map((person) => <li key={person.id}><span className="attendee-name-cell">{person.attendeeName}</span></li>)}</ul>}</section>;
   }) : <div className="table-empty"><span className="table-empty-icon"><DoorOpen size={22} /></span><strong>Room assignments are being prepared.</strong><span>Once rooms are assigned, you’ll find your details here.</span></div>}</div><div className="privacy-note"><CheckCircle2 size={15} /> Select a building and room to view its assigned attendees.</div></div></section>;
+}
+
+function ContestPage({ contests, programs, selectedId, onSelect }: { contests: ContestEntry[]; programs: ProgramRecord[]; selectedId: string; onSelect: (value: string) => void }) {
+  const [expandedContests, setExpandedContests] = useState<Record<string, boolean>>({});
+  const sorted = [...contests].sort((a, b) => `${a.date}-${a.time}-${a.name}`.localeCompare(`${b.date}-${b.time}-${b.name}`));
+
+  return <section className="content-section contest-page"><div className="contest-toolbar"><ProgramChooser programs={programs} selectedId={selectedId} onChange={onSelect} /></div>
+    {sorted.length ? <div className="contest-list">{sorted.map((contest, index) => {
+      const expanded = Boolean(expandedContests[contest.id]);
+      const detailsId = `contest-details-${index}`;
+      const criteria = contest.criteria ?? [];
+      return <article className="contest-card clay-card" key={contest.id}>
+        <button type="button" className="contest-accordion-toggle" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpandedContests((current) => ({ ...current, [contest.id]: !current[contest.id] }))}>
+          <span className="contest-accordion-icon"><Trophy size={18} /></span>
+          <span className="contest-accordion-copy"><strong>{contest.name}</strong><small>{dateLabel(contest.date)} · {contest.time ? formatTime(contest.time) : "Time to be announced"}</small></span>
+          <ChevronDown className={expanded ? "contest-accordion-chevron is-expanded" : "contest-accordion-chevron"} size={19} />
+        </button>
+        <div className="contest-details" id={detailsId} hidden={!expanded}>
+          <section className="contest-detail-panel"><span className="eyebrow">MECHANICS</span><p>{contest.mechanics || "Contest mechanics will be shared soon."}</p></section>
+          <section className="contest-detail-panel"><span className="eyebrow">CRITERIA</span>{criteria.length ? <ul className="contest-criteria-list">{criteria.map((criterion) => <li key={criterion.id}><span>{criterion.item}</span><strong>{Number(criterion.percentage) || 0}%</strong></li>)}</ul> : <p>Contest criteria will be shared soon.</p>}</section>
+        </div>
+      </article>;
+    })}</div> : <div className="empty-state clay-card"><span className="empty-icon"><Trophy size={22} /></span><h3>Contest details are being prepared.</h3><p>Published contests for the selected program will appear here.</p></div>}
+  </section>;
+}
+
+function ContestManagement({ contests, programs, selectedId, onSelect, onCreate, onEdit, onDelete }: { contests: ContestEntry[]; programs: ProgramRecord[]; selectedId: string; onSelect: (value: string) => void; onCreate: () => void; onEdit: (contest: ContestEntry) => void; onDelete: (contest: ContestEntry) => void }) {
+  const sorted = [...contests].sort((a, b) => `${a.date}-${a.time}-${a.name}`.localeCompare(`${b.date}-${b.time}-${b.name}`));
+  const program = programs.find((entry) => entry.id === selectedId);
+  return <section className="content-section contest-management"><div className="contest-management-toolbar"><ProgramChooser programs={programs} selectedId={selectedId} onChange={onSelect} /><button type="button" className="button button-primary" onClick={onCreate} disabled={!programs.length}><Plus size={17} /> New contest entry</button></div>
+    <div className="manage-heading contest-manage-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> CONTEST ENTRIES</span><h2>{program?.title ?? "Choose a program"}</h2><p>Create contest details and scoring criteria for a program.</p></div><span className="contest-entry-count">{contests.length} {contests.length === 1 ? "ENTRY" : "ENTRIES"}</span></div>
+    {sorted.length ? <div className="contest-admin-list">{sorted.map((contest) => <article className="contest-admin-card clay-card" key={contest.id}><span className="contest-admin-icon"><Trophy size={19} /></span><div className="contest-admin-copy"><span className="list-date">{dateLabel(contest.date)} · {contest.time ? formatTime(contest.time) : "Time to be announced"}</span><h3>{contest.name}</h3><p>{contest.criteria?.length ?? 0} judging criteria</p></div><div className="contest-admin-actions"><button type="button" className="soft-icon-button" aria-label={`Edit ${contest.name}`} title="Edit contest" onClick={() => onEdit(contest)}><Edit3 size={17} /></button><button type="button" className="soft-icon-button soft-icon-danger" aria-label={`Delete ${contest.name}`} title="Remove contest" onClick={() => onDelete(contest)}><Trash2 size={17} /></button></div></article>)}</div> : <div className="empty-state clay-card"><span className="empty-icon"><Trophy size={22} /></span><h3>{program ? "No contest entries yet" : "Choose a program"}</h3><p>{program ? "Add the contest mechanics, date, time, and criteria for this program." : "Choose a program before adding its contest entries."}</p><button type="button" className="button button-outline" onClick={onCreate} disabled={!programs.length}><Plus size={16} /> Add a contest entry</button></div>}
+  </section>;
 }
 
 function ProgramManagement({ programs, onCreate, onEdit, onDelete }: { programs: ProgramRecord[]; onCreate: () => void; onEdit: (program: ProgramRecord) => void; onDelete: (program: ProgramRecord) => void }) {
@@ -579,6 +651,34 @@ function ProgramModal({ program, busy, onClose, onSave }: { program: ProgramReco
   function removeFlow(index: number) { setFlow((current) => current.filter((_, i) => i !== index)); }
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); await onSave({ title: title.trim(), description: description.trim(), theme: theme.trim(), dateFrom, dateTo, venue: venue.trim(), flow: flow.filter((entry) => entry.title.trim()).map((entry) => ({ ...entry, title: entry.title.trim(), description: entry.description.trim(), speaker: entry.speaker.trim() })) }, program?.id); }
   return <ModalFrame title={program ? "Edit your program" : "Create a program"} eyebrow="PROGRAM DETAILS" onClose={onClose} className="program-modal"><form className="modal-form" onSubmit={submit}><div className="form-grid form-grid-two"><Field label="Program name"><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Secretariat Year-End Gathering" required /></Field><Field label="Theme" optional><input value={theme} onChange={(event) => setTheme(event.target.value)} placeholder="A theme for the gathering" /></Field></div><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A short introduction to the event" /></Field><div className="form-grid form-grid-three"><Field label="Date from"><input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); if (!dateTo) setDateTo(event.target.value); }} required /></Field><Field label="Date to"><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} min={dateFrom} required /></Field><Field label="Venue"><input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Event venue" required /></Field></div><div className="form-section-title flow-form-heading"><strong>Daily program flow</strong><button type="button" className="small-add-button" onClick={addFlow}><Plus size={14} /> Add session</button></div>{flow.length ? <div className="flow-editor-list">{flow.map((entry, index) => <div className="flow-editor-card" key={entry.id}><div className="flow-editor-top"><span>SESSION {String(index + 1).padStart(2, "0")}</span><button type="button" onClick={() => removeFlow(index)} aria-label="Remove session"><Trash2 size={14} /></button></div><div className="form-grid form-grid-four"><Field label="Date"><input type="date" min={dateFrom || undefined} max={dateTo || undefined} value={entry.date} onChange={(event) => patchFlow(index, "date", event.target.value)} /></Field><Field label="Starts"><input type="time" value={entry.startTime} onChange={(event) => patchFlow(index, "startTime", event.target.value)} /></Field><Field label="Ends"><input type="time" value={entry.endTime} onChange={(event) => patchFlow(index, "endTime", event.target.value)} /></Field><Field label="Session title"><input value={entry.title} onChange={(event) => patchFlow(index, "title", event.target.value)} placeholder="Opening remarks" /></Field></div><div className="form-grid form-grid-two"><Field label="Description" optional><input value={entry.description} onChange={(event) => patchFlow(index, "description", event.target.value)} /></Field><Field label="Speaker / lead" optional><input value={entry.speaker} onChange={(event) => patchFlow(index, "speaker", event.target.value)} /></Field></div></div>)}</div> : <div className="flow-empty"><ClipboardList size={18} /><span>No sessions added. You can add the daily flow now or later.</span><button type="button" onClick={addFlow}>Add the first session</button></div>}<div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? "Saving…" : program ? "Save changes" : "Create program"}<Check size={16} /></button></div></form></ModalFrame>;
+}
+
+function ContestModal({ programs, defaultProgramId, contest, busy, onClose, onSave }: { programs: ProgramRecord[]; defaultProgramId: string; contest: ContestEntry | null; busy: boolean; onClose: () => void; onSave: (values: Omit<ContestEntry, "id" | "createdAt" | "updatedAt">, id?: string) => Promise<void> }) {
+  const [programId, setProgramId] = useState(contest?.programId ?? defaultProgramId);
+  const [name, setName] = useState(contest?.name ?? "");
+  const [date, setDate] = useState(contest?.date ?? "");
+  const [time, setTime] = useState(contest?.time ?? "");
+  const [mechanics, setMechanics] = useState(contest?.mechanics ?? "");
+  const [criteria, setCriteria] = useState<ContestCriterion[]>(() => contest?.criteria?.length ? contest.criteria.map((entry) => ({ ...entry })) : [{ id: crypto.randomUUID(), item: "", percentage: 0 }]);
+
+  function addCriterion() { setCriteria((current) => [...current, { id: crypto.randomUUID(), item: "", percentage: 0 }]); }
+  function updateCriterionItem(index: number, item: string) { setCriteria((current) => current.map((entry, position) => position === index ? { ...entry, item } : entry)); }
+  function updateCriterionPercentage(index: number, percentage: string) { setCriteria((current) => current.map((entry, position) => position === index ? { ...entry, percentage: percentage === "" ? 0 : Number(percentage) } : entry)); }
+  function removeCriterion(index: number) { setCriteria((current) => current.filter((_, position) => position !== index)); }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSave({ programId, name: name.trim(), date, time, mechanics: mechanics.trim(), criteria: criteria.map((entry) => ({ ...entry, item: entry.item.trim(), percentage: Number(entry.percentage) })) }, contest?.id);
+  }
+
+  return <ModalFrame title={contest ? "Edit contest entry" : "Add a contest entry"} eyebrow="CONTEST DETAILS" onClose={onClose} className="contest-modal"><form className="modal-form" onSubmit={submit}>
+    <Field label="Program"><select autoFocus value={programId} onChange={(event) => setProgramId(event.target.value)} required><option value="">Select a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select></Field>
+    <div className="form-grid form-grid-three contest-schedule-fields"><Field label="Contest"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Contest name" required /></Field><Field label="Date"><input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></Field><Field label="Time"><input type="time" value={time} onChange={(event) => setTime(event.target.value)} required /></Field></div>
+    <Field label="Mechanics"><textarea rows={5} value={mechanics} onChange={(event) => setMechanics(event.target.value)} placeholder="Describe how the contest will be conducted." required /></Field>
+    <div className="contest-criteria-editor"><div className="contest-criteria-editor-heading"><div><strong>Criteria</strong><span>List each item and its point percentage.</span></div><button type="button" className="small-add-button" onClick={addCriterion}><Plus size={14} /> Add item</button></div>
+      {criteria.map((criterion, index) => <div className="contest-criterion-editor-row" key={criterion.id}><Field label={`Item ${index + 1}`}><input value={criterion.item} onChange={(event) => updateCriterionItem(index, event.target.value)} placeholder="e.g. Presentation" required /></Field><Field label="Points (%)"><input type="number" min="0" max="100" step="0.01" value={criterion.percentage} onChange={(event) => updateCriterionPercentage(index, event.target.value)} required /></Field><button type="button" className="soft-icon-button soft-icon-danger contest-criterion-remove" aria-label={`Remove criterion ${index + 1}`} disabled={criteria.length === 1} onClick={() => removeCriterion(index)}><Trash2 size={16} /></button></div>)}
+    </div>
+    <div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy || !programs.length}>{busy ? "Saving…" : contest ? "Save changes" : "Add contest"}<Check size={16} /></button></div>
+  </form></ModalFrame>;
 }
 
 function RoomModal({ programId, room, busy, onClose, onSave }: { programId: string; room: RoomRecord | null; busy: boolean; onClose: () => void; onSave: (values: Omit<RoomRecord, "id" | "finalized">, id?: string) => Promise<void> }) {
