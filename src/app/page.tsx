@@ -32,6 +32,7 @@ type AttendeeFormValues = {
 
 const PASSCODE = "fod";
 const VENUE_MAP_EMBED_URL = "https://maps.google.com/maps?q=8.97901813439178%2C125.43881061100534&z=16&output=embed";
+const VENUE_DIRECTIONS_URL = "https://www.google.com/maps/dir/?api=1&destination=8.97901813439178%2C125.43881061100534";
 const ACCESS_STORAGE_KEY = "fod-secretariat-access";
 const allProvinceData = locations as GeoProvince[];
 const regionXIIIProvinceNames = new Set([
@@ -466,7 +467,7 @@ export default function Home() {
         </section>
       </>}
 
-      {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><span><MapPin size={15} /> 8.97901813439178, 125.43881061100534</span><button type="button" className="button button-primary" onClick={() => setMapOpen(false)}>Close map</button></div></ModalFrame>}
+      {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><span><MapPin size={15} /> 8.97901813439178, 125.43881061100534</span><a className="button button-primary" href={VENUE_DIRECTIONS_URL} target="_blank" rel="noopener noreferrer">Get Direction <ArrowRight size={16} /></a></div></ModalFrame>}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
       {programModal !== null && <ProgramModal key={programModal === "new" ? "new" : programModal.id} program={programModal === "new" ? null : programModal} busy={busy} onClose={() => setProgramModal(null)} onSave={saveProgram} />}
       {roomModal !== null && <RoomModal key={roomModal === "new" ? `new-${selectedProgramId}` : roomModal.id} programId={selectedProgramId} room={roomModal === "new" ? null : roomModal} busy={busy} onClose={() => setRoomModal(null)} onSave={saveRoom} />}
