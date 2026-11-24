@@ -172,7 +172,12 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 .program-theme { position: relative; margin: 6px 0 0; color: var(--coral); font: italic 15px var(--font-serif); }
 .program-description { position: relative; max-width: 650px; margin: 9px 0 0; color: #847781; font: 13px/1.65 var(--font-serif); }
 .program-meta { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 22px; margin-top: 19px; color: #766772; font-size: 10px; }
-.program-meta span { display: inline-flex; align-items: center; gap: 7px; }.program-meta svg { color: #ad8052; }
+.program-meta > span { display: inline-flex; align-items: center; gap: 7px; }.program-meta svg { color: #ad8052; }
+.program-meta-location { max-width: 100%; padding: 0; display: inline-flex; align-items: flex-start; gap: 7px; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.program-meta-location > svg { flex: 0 0 auto; margin-top: .2em; }
+.program-meta-location > span { min-width: 0; overflow-wrap: anywhere; }
+.program-meta-location:hover { color: var(--coral-deep); }
+.program-meta-location:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 3px; }
 .flow-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 15px; margin: 0 0 14px; }
 .flow-heading h2 { display: flex; align-items: center; gap: 9px; font-size: 27px; }.flow-heading h2 span { color: var(--coral); font: 18px var(--font-sans); }
 .flow-count { margin-bottom: 4px; color: #9e9a82; font-size: 8px; font-weight: 700; letter-spacing: .15em; }
