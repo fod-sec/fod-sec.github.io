@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query,
   serverTimestamp, setDoc, updateDoc, writeBatch,
@@ -11,7 +12,7 @@ import {
 import {
   ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown,
   CircleHelp, ClipboardList, DoorOpen, Edit3, FilePlus2, Flower2, KeyRound,
-  LoaderCircle, LogOut, Mail, MapPin, Menu, Plus, Trash2, UsersRound,
+  LoaderCircle, LogOut, Mail, MapPin, Plus, Trash2, UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
@@ -30,14 +31,15 @@ type AttendeeFormValues = {
 };
 
 const PASSCODE = "fod";
+const VENUE_MAP_EMBED_URL = "https://maps.google.com/maps?q=8.97901813439178%2C125.43881061100534&z=16&output=embed";
 const ACCESS_STORAGE_KEY = "fod-secretariat-access";
 const allProvinceData = locations as GeoProvince[];
-const caragaProvinceNames = new Set([
+const regionXIIIProvinceNames = new Set([
   "Agusan del Norte", "Agusan del Sur", "Dinagat Islands", "Surigao del Norte", "Surigao del Sur",
 ]);
 const butuanCity = allProvinceData.find((entry) => entry.name === "City of Butuan")?.cities ?? [];
 const provinceData = allProvinceData
-  .filter((entry) => caragaProvinceNames.has(entry.name))
+  .filter((entry) => regionXIIIProvinceNames.has(entry.name))
   .map((entry) => entry.name === "Agusan del Norte"
     ? { ...entry, cities: [...entry.cities, ...butuanCity].sort((a, b) => a.name.localeCompare(b.name)) }
     : entry);
@@ -104,12 +106,13 @@ export default function Home() {
   const [selectedProgramId, setSelectedProgramId] = useState("");
   const [view, setView] = useState<View>("home");
   const [selectedDay, setSelectedDay] = useState("");
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [programModal, setProgramModal] = useState<ProgramRecord | "new" | null>(null);
   const [roomModal, setRoomModal] = useState<RoomRecord | "new" | null>(null);
   const [deleteRoomTarget, setDeleteRoomTarget] = useState<RoomRecord | null>(null);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [attendeeSending, setAttendeeSending] = useState(false);
 
   const notice = useCallback((text: string, kind: "success" | "error" = "success") => {
@@ -254,10 +257,10 @@ export default function Home() {
   }
 
   async function logout() {
+    setLogoutConfirmOpen(false);
     window.localStorage.removeItem(ACCESS_STORAGE_KEY);
     await signOut(auth);
     setView("home");
-    setMobileNavOpen(false);
     setPrograms([]); setSummaries([]); setAssignments([]); setAttendees([]); setRooms([]);
   }
 
@@ -390,7 +393,6 @@ export default function Home() {
 
   function goTo(nextView: View) {
     setView(nextView);
-    setMobileNavOpen(false);
     if (nextView === "program" && !selectedProgramId && programs[0]) setSelectedProgramId(programs[0].id);
   }
 
@@ -401,12 +403,11 @@ export default function Home() {
       <div className="ambient ambient-one" aria-hidden="true" /><div className="ambient ambient-two" aria-hidden="true" />
       <header className="topbar">
         <button className="brand" type="button" onClick={() => signedIn && goTo("home")} aria-label="The Secretariat home">
-          <span className="brand-mark"><Flower2 size={22} strokeWidth={1.6} /><span className="brand-dot" /></span>
+          <span className="brand-mark"><Image src="/colored-logo.png" alt="" width={40} height={40} /></span>
           <span className="brand-copy"><strong>THE SECRETARIAT</strong><small>PROGRAMS · PEOPLE · PLACE</small></span>
         </button>
         {signedIn ? <>
-          <button className="mobile-menu" type="button" aria-label="Toggle navigation" onClick={() => setMobileNavOpen((open) => !open)}>{mobileNavOpen ? <X /> : <Menu />}</button>
-          <nav className={`main-nav ${mobileNavOpen ? "nav-open" : ""}`} aria-label="Main navigation">
+          <nav className="main-nav" aria-label="Main navigation">
             {role === "guest" ? <>
               <NavButton active={view === "program"} onClick={() => goTo("program")} icon={<CalendarDays size={16} />}>Program</NavButton>
               <NavButton active={view === "rooms"} onClick={() => goTo("rooms")} icon={<DoorOpen size={16} />}>Room Assignment</NavButton>
@@ -414,17 +415,15 @@ export default function Home() {
               <NavButton active={view === "programs"} onClick={() => goTo("programs")} icon={<CalendarDays size={16} />}>Program List</NavButton>
               <NavButton active={view === "room-management"} onClick={() => goTo("room-management")} icon={<DoorOpen size={16} />}>Room Management</NavButton>
             </>}
-            <button className="logout-button" type="button" onClick={logout} aria-label="Log out" title="Log out"><LogOut size={17} /></button>
+            <button className="logout-button" type="button" onClick={() => setLogoutConfirmOpen(true)} aria-label="Log out" title="Log out"><LogOut size={17} /></button>
           </nav>
         </> : <div className="topbar-kicker">EVENT PROGRAMS / ATTENDANCE / BILLETING</div>}
       </header>
 
       {authLoading ? <div className="loading-screen"><div className="loading-indicator"><LoaderCircle size={25} /></div><p>Loading Secretariat workspace…</p></div> : !signedIn ? (
         <section className="login-page">
-          <div className="login-decoration ornament-left">✳</div><div className="login-decoration ornament-right">✧</div>
           <div className="login-intro"><span className="eyebrow"><span className="eyebrow-line" /> THE SECRETARIAT</span><h1>Manage events.<br /><em>With confidence.</em></h1><p>Coordinate program schedules, attendance, and room assignments in one place.</p></div>
           <div className="login-card clay-card">
-            <div className="login-card-top"><span className="small-mark"><Flower2 size={19} /></span><span className="login-season">SECURE EVENT ACCESS</span></div>
             <h2>{authView === "access" ? "Welcome." : "Admin sign in."}</h2>
             <p>{authView === "access" ? "Enter the access code to view your program and confirm attendance." : "Use your Secretariat admin account to manage the event."}</p>
             {authView === "access" ? <form className="auth-form" onSubmit={enterGuest}>
@@ -437,7 +436,6 @@ export default function Home() {
             </form>}
             <div className="login-divider"><span /> <small>OR</small> <span /></div>
             <button className="text-link" type="button" onClick={() => setAuthView(authView === "access" ? "admin" : "access")}>{authView === "access" ? "Admin sign in" : "Back to access code"}<ArrowRight size={15} /></button>
-            <div className="login-card-foot"><span><span className="status-dot" /> SECURE EVENT ACCESS</span><span>CARAGA REGION XIII</span></div>
           </div>
           <div className="login-footnote">Event details, attendance, and billeting in one workspace.</div>
         </section>
@@ -445,7 +443,7 @@ export default function Home() {
         <section className="page-wrap">
           <div className="welcome-row">
             <div><span className="eyebrow"><span className="eyebrow-line" /> {role === "admin" ? "ADMIN WORKSPACE" : "EVENT WORKSPACE"}</span><h1>{view === "home" ? <>Event overview.<br /><em>Daily operations.</em></> : view === "program" ? <>Program<br /><em>schedule.</em></> : view === "rooms" ? <>Room<br /><em>assignments.</em></> : view === "programs" ? <>Program<br /><em>management.</em></> : <>Room<br /><em>management.</em></>}</h1></div>
-            <div className="welcome-decoration"><div className="decoration-ring"><Flower2 size={43} strokeWidth={1.1} /><span>✳</span></div><span className="decoration-caption">CARAGA REGION XIII</span></div>
+            <div className="welcome-decoration"><div className="decoration-ring"><Image src="/colored-logo.png" alt="" width={43} height={43} /></div></div>
           </div>
 
           {view === "home" && <>
@@ -453,34 +451,36 @@ export default function Home() {
             <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} />
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
-                <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? `${eventRange(selectedProgram)} · ${selectedProgram.venue || "Venue to be announced"}` : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
+                <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
                 <button className="icon-arrow" onClick={() => goTo(role === "admin" ? "programs" : "program")} aria-label="Open program"><ArrowRight size={19} /></button>
               </div>
-              <div className="clay-card home-note"><div className="note-top"><span className="eyebrow">SYSTEM NOTE</span></div><p>Attendance figures update as confirmations are recorded. Review program and room details to keep event information current.</p></div>
             </section>
           </>}
 
-          {view === "program" && <ProgramPage programs={programs} program={selectedProgram} onSelect={setSelectedProgramId} selectedId={selectedProgramId} flow={visibleFlow} days={flowDays} activeDay={day} onDayChange={setSelectedDay} onConfirm={() => selectedProgram && setAttendanceOpen(true)} summaries={selectedSummaries} />}
+          {view === "program" && <ProgramPage programs={programs} program={selectedProgram} onSelect={setSelectedProgramId} selectedId={selectedProgramId} flow={visibleFlow} days={flowDays} activeDay={day} onDayChange={setSelectedDay} onConfirm={() => selectedProgram && setAttendanceOpen(true)} />}
           {view === "rooms" && <RoomAssignmentPage assignments={programAssignments} programs={programs} selectedId={selectedProgramId} onSelect={setSelectedProgramId} />}
           {view === "programs" && <ProgramManagement programs={programs} onCreate={() => setProgramModal("new")} onEdit={(program) => setProgramModal(program)} onDelete={removeProgram} />}
           {view === "room-management" && <RoomManagement programs={programs} program={selectedProgram} rooms={programRooms} assignments={programAssignments} attendees={attendees.filter((entry) => entry.programId === selectedProgramId)} unassignedCount={unassignedCount} onSelect={setSelectedProgramId} onCreate={() => setRoomModal("new")} onEdit={(room) => setRoomModal(room)} onDelete={setDeleteRoomTarget} onFinalize={() => setFinalizeOpen(true)} />}
 
-          <footer className="page-footer"><span>THE SECRETARIAT <span>✳</span> MADE WITH CARE</span><span>PROGRAMS · PEOPLE · PLACE</span></footer>
+          <footer className="page-footer"><span>PROGRAMS · PEOPLE · PLACE</span></footer>
         </section>
       </>}
 
+      {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><span><MapPin size={15} /> 8.97901813439178, 125.43881061100534</span><button type="button" className="button button-primary" onClick={() => setMapOpen(false)}>Close map</button></div></ModalFrame>}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
       {programModal !== null && <ProgramModal key={programModal === "new" ? "new" : programModal.id} program={programModal === "new" ? null : programModal} busy={busy} onClose={() => setProgramModal(null)} onSave={saveProgram} />}
       {roomModal !== null && <RoomModal key={roomModal === "new" ? `new-${selectedProgramId}` : roomModal.id} programId={selectedProgramId} room={roomModal === "new" ? null : roomModal} busy={busy} onClose={() => setRoomModal(null)} onSave={saveRoom} />}
       {deleteRoomTarget && <ConfirmDialog title="Remove this room?" copy={`Building ${deleteRoomTarget.building}, room ${deleteRoomTarget.roomNo} will be removed. Existing assignments for this program will be cleared.`} confirmLabel="Remove room" onCancel={() => setDeleteRoomTarget(null)} onConfirm={() => removeRoom(deleteRoomTarget)} />}
       {finalizeOpen && <ConfirmDialog title="Finalize room assignment?" copy={`This will assign attendees who requested billeting to the available rooms by sex and capacity. ${unassignedCount ? `${unassignedCount} current attendee(s) are unassigned.` : "You can edit rooms and finalize again later."}`} confirmLabel={busy ? "Assigning…" : "Finalize assignments"} busy={busy} onCancel={() => !busy && setFinalizeOpen(false)} onConfirm={finalizeRoomAssignments} />}
+      {logoutConfirmOpen && <ConfirmDialog title="Log out?" copy="Are you sure you want to log out of The Secretariat?" confirmLabel="Log out" onCancel={() => setLogoutConfirmOpen(false)} onConfirm={logout} />}
       {toast && <div className={`toast toast-${toast.kind}`} role="status"><span className="toast-icon">{toast.kind === "success" ? <CheckCircle2 size={18} /> : <CircleHelp size={18} />}</span>{toast.text}<button type="button" onClick={() => setToast(null)} aria-label="Dismiss message"><X size={15} /></button></div>}
     </main>
   );
 }
 
 function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
-  return <button className={`nav-button ${active ? "nav-active" : ""}`} type="button" onClick={onClick}>{icon}<span>{children}</span></button>;
+  const label = typeof children === "string" ? children : undefined;
+  return <button className={`nav-button ${active ? "nav-active" : ""}`} type="button" onClick={onClick} aria-label={label} title={label}>{icon}<span>{children}</span></button>;
 }
 
 function ProgramChooser({ programs, selectedId, onChange }: { programs: ProgramRecord[]; selectedId: string; onChange: (value: string) => void }) {
@@ -493,30 +493,35 @@ function StatsPanel({ counts, programTitle }: { counts: { confirmed: { male: num
     { label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
     { label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
   ];
-  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle} <span>·</span> Live attendance counts</p></div><span className="live-pill"><span className="status-dot" /> LIVE</span></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span><span className="stat-sparkle">✳</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div><div className="gender-total"><span>Total</span><strong>{card.details.total}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
+  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle} <span>·</span> Live attendance counts</p></div><span className="live-pill"><span className="status-dot" /> LIVE</span></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
 }
 
-function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, summaries }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; summaries: AttendeeSummary[] }) {
+function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void }) {
   return <section className="content-section program-page">
     <div className="program-toolbar"><ProgramChooser programs={programs} selectedId={selectedId} onChange={onSelect} /><button type="button" className="button button-primary attendance-cta" disabled={!program} onClick={onConfirm}><CheckCircle2 size={17} /> Attendance confirmation</button></div>
     {program ? <>
-      <div className="program-hero clay-card"><div className="program-hero-flower">✳</div><span className="eyebrow">THE PROGRAM FLOW</span><h2>{program.title}</h2>{program.theme && <p className="program-theme">“{program.theme}”</p>}<p className="program-description">{program.description || "A thoughtful program, planned for a good gathering."}</p><div className="program-meta"><span><CalendarDays size={16} />{eventRange(program)}</span><span><MapPin size={16} />{program.venue || "Venue to be announced"}</span></div></div>
-      <div className="flow-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> THE DAY, AT A GLANCE</span><h2>Program flow <span>✳</span></h2></div><span className="flow-count">{flow.length} {flow.length === 1 ? "SESSION" : "SESSIONS"}</span></div>
+      <div className="program-hero clay-card"><span className="eyebrow">THE PROGRAM FLOW</span><h2>{program.title}</h2>{program.theme && <p className="program-theme">“{program.theme}”</p>}<p className="program-description">{program.description || "A thoughtful program, planned for a good gathering."}</p><div className="program-meta"><span><CalendarDays size={16} />{eventRange(program)}</span><span><MapPin size={16} />{program.venue || "Venue to be announced"}</span></div></div>
+      <div className="flow-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> THE DAY, AT A GLANCE</span><h2>Program flow</h2></div><span className="flow-count">{flow.length} {flow.length === 1 ? "SESSION" : "SESSIONS"}</span></div>
       {days.length > 1 && <div className="day-tabs" role="tablist">{days.map((flowDay, index) => <button role="tab" aria-selected={activeDay === flowDay} className={activeDay === flowDay ? "day-tab day-tab-active" : "day-tab"} key={flowDay} onClick={() => onDayChange(flowDay)}><small>DAY {index + 1}</small><strong>{dateLabel(flowDay, { month: "short", day: "numeric" })}</strong></button>)}</div>}
       <div className="timeline">{flow.length ? flow.map((entry, index) => <article className="timeline-item" key={entry.id}><div className="timeline-rail"><span className="timeline-dot">{index === 0 ? <Flower2 size={13} /> : <span />}</span></div><div className="timeline-card clay-card"><div className="timeline-time">{entry.startTime ? formatTime(entry.startTime) : "Time TBA"}{entry.endTime && <> <span>–</span> {formatTime(entry.endTime)}</>}</div><div className="timeline-copy"><h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}{entry.speaker && <span className="timeline-speaker">{entry.speaker}</span>}</div></div></article>) : <div className="empty-state clay-card"><div className="empty-icon"><CalendarDays size={22} /></div><h3>Program flow is on its way.</h3><p>The daily schedule will appear here as soon as it is shared.</p></div>}</div>
-      <div className="attendance-prompt clay-card"><span className="prompt-icon"><ClipboardList size={22} /></span><div><span className="eyebrow">SAVE YOUR SEAT</span><h3>Are you joining us?</h3><p>{summaries.length} {summaries.length === 1 ? "person has" : "people have"} confirmed so far.</p></div><button type="button" className="button button-outline" onClick={onConfirm}>Confirm attendance <ArrowRight size={16} /></button></div>
     </> : <div className="empty-state clay-card"><div className="empty-icon"><CalendarDays size={22} /></div><h3>The program is getting ready.</h3><p>There are no programs to show just yet. Check back soon.</p></div>}
   </section>;
 }
 
 function RoomAssignmentPage({ assignments, programs, selectedId, onSelect }: { assignments: RoomAssignment[]; programs: ProgramRecord[]; selectedId: string; onSelect: (id: string) => void }) {
-  const sorted = [...assignments].sort((a, b) => `${a.building}-${a.roomNo}-${a.sexScope}-${a.attendeeName}`.localeCompare(`${b.building}-${b.roomNo}-${b.sexScope}-${b.attendeeName}`));
-  const groups = sorted.reduce<Record<string, RoomAssignment[]>>((result, item) => {
-    const key = `${item.building}__${item.roomNo}__${item.sexScope}`;
-    (result[key] ??= []).push(item);
+  const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
+  const roomGroups = Object.values(assignments.reduce<Record<string, { key: string; building: string; roomNo: string; people: RoomAssignment[] }>>((result, assignment) => {
+    const key = JSON.stringify([assignment.building, assignment.roomNo]);
+    (result[key] ??= { key, building: assignment.building, roomNo: assignment.roomNo, people: [] }).people.push(assignment);
     return result;
-  }, {});
-  return <section className="content-section room-page"><div className="room-toolbar"><ProgramChooser programs={programs} selectedId={selectedId} onChange={onSelect} /><div className="room-legend"><span><i className="gender-dot male-dot" /> Male rooms</span><span><i className="gender-dot female-dot" /> Female rooms</span></div></div><div className="table-card clay-card"><div className="table-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> YOUR BILLETING</span><h2>Room assignments</h2><p>Find your name and settle in.</p></div><span className="table-total"><strong>{assignments.length}</strong> {assignments.length === 1 ? "PERSON" : "PEOPLE"}</span></div><div className="assignment-table-wrap"><table className="assignment-table"><thead><tr><th>Building</th><th>Room no.</th><th>Sex scope</th><th>Name</th></tr></thead><tbody>{Object.entries(groups).length ? Object.entries(groups).map(([key, people]) => people.map((person, index) => <tr key={`${key}-${person.id}`}><td>{index === 0 ? <strong>{person.building}</strong> : null}</td><td>{index === 0 ? <span className="room-number-pill">{person.roomNo}</span> : null}</td><td>{index === 0 ? <span className={`sex-tag ${person.sexScope.toLowerCase()}`}>{person.sexScope}</span> : null}</td><td><span className="attendee-name-cell">{person.attendeeName}</span></td></tr>)) : <tr><td colSpan={4}><div className="table-empty"><span className="table-empty-icon"><DoorOpen size={22} /></span><strong>Room assignments are being prepared.</strong><span>Once rooms are assigned, you’ll find your details here.</span></div></td></tr>}</tbody></table></div><div className="privacy-note"><CheckCircle2 size={15} /> Room assignments are grouped by building, room, and sex-at-birth scope.</div></div></section>;
+  }, {})).sort((a, b) => `${a.building}-${a.roomNo}`.localeCompare(`${b.building}-${b.roomNo}`));
+
+  return <section className="content-section room-page"><div className="room-toolbar"><ProgramChooser programs={programs} selectedId={selectedId} onChange={onSelect} /></div><div className="table-card clay-card"><div className="table-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> YOUR BILLETING</span><h2>Room assignments</h2><p>Find your name and settle in.</p></div><span className="table-total"><strong>{assignments.length}</strong> {assignments.length === 1 ? "PERSON" : "PEOPLE"}</span></div><div className="assignment-room-list">{roomGroups.length ? roomGroups.map((room, index) => {
+    const expanded = Boolean(expandedRooms[room.key]);
+    const roomLabel = `${room.building} - ${room.roomNo}`;
+    const peopleId = `assignment-room-${index}`;
+    return <section className="assignment-room-group" key={room.key}><button type="button" className="assignment-room-toggle" aria-expanded={expanded} aria-controls={peopleId} onClick={() => setExpandedRooms((current) => ({ ...current, [room.key]: !current[room.key] }))}><span className="assignment-room-icon"><DoorOpen size={17} /></span><span className="assignment-room-label">{roomLabel}</span><span className="assignment-room-count">{room.people.length} {room.people.length === 1 ? "person" : "people"}</span><ChevronDown className={expanded ? "assignment-room-chevron is-expanded" : "assignment-room-chevron"} size={18} /></button>{expanded && <ul className="assignment-room-people" id={peopleId} aria-label={`Attendees assigned to ${roomLabel}`}>{[...room.people].sort((a, b) => a.attendeeName.localeCompare(b.attendeeName)).map((person) => <li key={person.id}><span className="attendee-name-cell">{person.attendeeName}</span></li>)}</ul>}</section>;
+  }) : <div className="table-empty"><span className="table-empty-icon"><DoorOpen size={22} /></span><strong>Room assignments are being prepared.</strong><span>Once rooms are assigned, you’ll find your details here.</span></div>}</div><div className="privacy-note"><CheckCircle2 size={15} /> Select a building and room to view its assigned attendees.</div></div></section>;
 }
 
 function ProgramManagement({ programs, onCreate, onEdit, onDelete }: { programs: ProgramRecord[]; onCreate: () => void; onEdit: (program: ProgramRecord) => void; onDelete: (program: ProgramRecord) => void }) {
@@ -526,7 +531,7 @@ function ProgramManagement({ programs, onCreate, onEdit, onDelete }: { programs:
 function RoomManagement({ programs, program, rooms, assignments, attendees, unassignedCount, onSelect, onCreate, onEdit, onDelete, onFinalize }: { programs: ProgramRecord[]; program: ProgramRecord | null; rooms: RoomRecord[]; assignments: RoomAssignment[]; attendees: AttendeeRecord[]; unassignedCount: number; onSelect: (id: string) => void; onCreate: () => void; onEdit: (room: RoomRecord) => void; onDelete: (room: RoomRecord) => void; onFinalize: () => void }) {
   const allocated = new Set(assignments.map((entry) => entry.attendeeId));
   const roomUse = (room: RoomRecord) => assignments.filter((entry) => entry.building === room.building && entry.roomNo === room.roomNo && entry.sexScope === room.sexScope).length;
-  return <section className="content-section manage-section"><div className="room-manage-top"><ProgramChooser programs={programs} selectedId={program?.id ?? ""} onChange={onSelect} /><button className="button button-outline" onClick={onCreate} disabled={!program}><Plus size={16} /> Add room</button></div><div className="room-summary-strip"><div><span>REGISTERED</span><strong>{attendees.length}</strong></div><div><span>REQUESTED BILLETING</span><strong>{attendees.filter((entry) => entry.billeting === "Yes").length}</strong></div><div><span>ASSIGNED</span><strong>{assignments.length}</strong></div><div className={unassignedCount ? "summary-alert" : ""}><span>NEED A ROOM</span><strong>{unassignedCount}</strong></div></div><div className="manage-heading room-manage-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ROOM MANAGEMENT</span><h2>{program?.title ?? "Choose a program"}</h2><p>Add rooms with capacity and matching sex scope, then finalize assignments.</p></div><button className="button button-primary" onClick={onFinalize} disabled={!program || !rooms.length}><Check size={17} /> Finalize room assignment</button></div><div className="room-card-grid">{rooms.length ? [...rooms].sort((a, b) => `${a.building}-${a.roomNo}`.localeCompare(`${b.building}-${b.roomNo}`)).map((room) => <article className="room-manage-card clay-card" key={room.id}><div className="room-card-top"><span className={`room-type-icon ${room.sexScope.toLowerCase()}`}><DoorOpen size={18} /></span><span className={room.finalized ? "finalized-tag" : "draft-tag"}><span /> {room.finalized ? "FINALIZED" : "READY TO ASSIGN"}</span></div><span className="room-building-label">{room.building}</span><div className="room-number-heading">Room {room.roomNo}</div><div className="room-card-meta"><span className={`sex-tag ${room.sexScope.toLowerCase()}`}>{room.sexScope} only</span><span>{roomUse(room)} / {room.capacity} beds</span></div><div className="room-capacity-track"><span style={{ width: `${Math.min(100, room.capacity ? roomUse(room) / room.capacity * 100 : 0)}%` }} /></div><div className="room-card-actions"><button type="button" onClick={() => onEdit(room)}><Edit3 size={14} /> Edit</button><button type="button" onClick={() => onDelete(room)}><Trash2 size={14} /> Remove</button></div></article>) : <div className="room-empty-card clay-card"><span className="empty-icon"><DoorOpen size={22} /></span><strong>No rooms added yet</strong><span>Rooms are set up separately for each program.</span><button className="button button-outline" onClick={onCreate} disabled={!program}><Plus size={15} /> Add a room</button></div>}</div><div className="assignment-footnote"><span className="footnote-flower">✳</span><span><strong>Automatic placement</strong>Attendees are assigned in name order to a room with matching sex scope and available capacity. Edit rooms anytime and finalize again to refresh the placements.</span><span className="assigned-badge"><CheckCircle2 size={15} /> {allocated.size} placed</span></div></section>;
+  return <section className="content-section manage-section"><div className="room-manage-top"><ProgramChooser programs={programs} selectedId={program?.id ?? ""} onChange={onSelect} /><button className="button button-outline" onClick={onCreate} disabled={!program}><Plus size={16} /> Add room</button></div><div className="room-summary-strip"><div><span>REGISTERED</span><strong>{attendees.length}</strong></div><div><span>REQUESTED BILLETING</span><strong>{attendees.filter((entry) => entry.billeting === "Yes").length}</strong></div><div><span>ASSIGNED</span><strong>{assignments.length}</strong></div><div className={unassignedCount ? "summary-alert" : ""}><span>NEED A ROOM</span><strong>{unassignedCount}</strong></div></div><div className="manage-heading room-manage-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ROOM MANAGEMENT</span><h2>{program?.title ?? "Choose a program"}</h2><p>Add rooms with capacity and matching sex scope, then finalize assignments.</p></div><button className="button button-primary" onClick={onFinalize} disabled={!program || !rooms.length}><Check size={17} /> Finalize room assignment</button></div><div className="room-card-grid">{rooms.length ? [...rooms].sort((a, b) => `${a.building}-${a.roomNo}`.localeCompare(`${b.building}-${b.roomNo}`)).map((room) => <article className="room-manage-card clay-card" key={room.id}><div className="room-card-top"><span className={`room-type-icon ${room.sexScope.toLowerCase()}`}><DoorOpen size={18} /></span><span className={room.finalized ? "finalized-tag" : "draft-tag"}><span /> {room.finalized ? "FINALIZED" : "READY TO ASSIGN"}</span></div><span className="room-building-label">{room.building}</span><div className="room-number-heading">Room {room.roomNo}</div><div className="room-card-meta"><span className={`sex-tag ${room.sexScope.toLowerCase()}`}>{room.sexScope} only</span><span>{roomUse(room)} / {room.capacity} beds</span></div><div className="room-capacity-track"><span style={{ width: `${Math.min(100, room.capacity ? roomUse(room) / room.capacity * 100 : 0)}%` }} /></div><div className="room-card-actions"><button type="button" onClick={() => onEdit(room)}><Edit3 size={14} /> Edit</button><button type="button" onClick={() => onDelete(room)}><Trash2 size={14} /> Remove</button></div></article>) : <div className="room-empty-card clay-card"><span className="empty-icon"><DoorOpen size={22} /></span><strong>No rooms added yet</strong><span>Rooms are set up separately for each program.</span><button className="button button-outline" onClick={onCreate} disabled={!program}><Plus size={15} /> Add a room</button></div>}</div><div className="assignment-footnote"><span><strong>Automatic placement</strong>Attendees are assigned in name order to a room with matching sex scope and available capacity. Edit rooms anytime and finalize again to refresh the placements.</span><span className="assigned-badge"><CheckCircle2 size={15} /> {allocated.size} placed</span></div></section>;
 }
 
 function ModalFrame({ title, eyebrow, children, onClose, className = "" }: { title: string; eyebrow?: string; children: React.ReactNode; onClose: () => void; className?: string }) {
@@ -572,7 +577,7 @@ function ProgramModal({ program, busy, onClose, onSave }: { program: ProgramReco
   function patchFlow(index: number, key: keyof ProgramFlowItem, value: string) { setFlow((current) => current.map((entry, i) => i === index ? { ...entry, [key]: value } : entry)); }
   function removeFlow(index: number) { setFlow((current) => current.filter((_, i) => i !== index)); }
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); await onSave({ title: title.trim(), description: description.trim(), theme: theme.trim(), dateFrom, dateTo, venue: venue.trim(), flow: flow.filter((entry) => entry.title.trim()).map((entry) => ({ ...entry, title: entry.title.trim(), description: entry.description.trim(), speaker: entry.speaker.trim() })) }, program?.id); }
-  return <ModalFrame title={program ? "Edit your program" : "Create a program"} eyebrow="PROGRAM DETAILS" onClose={onClose} className="program-modal"><form className="modal-form" onSubmit={submit}><div className="form-grid form-grid-two"><Field label="Program name"><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Secretariat Year-End Gathering" required /></Field><Field label="Theme" optional><input value={theme} onChange={(event) => setTheme(event.target.value)} placeholder="A theme for the gathering" /></Field></div><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A short introduction to the event" /></Field><div className="form-grid form-grid-three"><Field label="Date from"><input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); if (!dateTo) setDateTo(event.target.value); }} required /></Field><Field label="Date to"><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} min={dateFrom} required /></Field><Field label="Venue"><input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Event venue" required /></Field></div><div className="form-section-title flow-form-heading"><span>✳</span><strong>Daily program flow</strong><button type="button" className="small-add-button" onClick={addFlow}><Plus size={14} /> Add session</button></div>{flow.length ? <div className="flow-editor-list">{flow.map((entry, index) => <div className="flow-editor-card" key={entry.id}><div className="flow-editor-top"><span>SESSION {String(index + 1).padStart(2, "0")}</span><button type="button" onClick={() => removeFlow(index)} aria-label="Remove session"><Trash2 size={14} /></button></div><div className="form-grid form-grid-four"><Field label="Date"><input type="date" min={dateFrom || undefined} max={dateTo || undefined} value={entry.date} onChange={(event) => patchFlow(index, "date", event.target.value)} /></Field><Field label="Starts"><input type="time" value={entry.startTime} onChange={(event) => patchFlow(index, "startTime", event.target.value)} /></Field><Field label="Ends"><input type="time" value={entry.endTime} onChange={(event) => patchFlow(index, "endTime", event.target.value)} /></Field><Field label="Session title"><input value={entry.title} onChange={(event) => patchFlow(index, "title", event.target.value)} placeholder="Opening remarks" /></Field></div><div className="form-grid form-grid-two"><Field label="Description" optional><input value={entry.description} onChange={(event) => patchFlow(index, "description", event.target.value)} /></Field><Field label="Speaker / lead" optional><input value={entry.speaker} onChange={(event) => patchFlow(index, "speaker", event.target.value)} /></Field></div></div>)}</div> : <div className="flow-empty"><ClipboardList size={18} /><span>No sessions added. You can add the daily flow now or later.</span><button type="button" onClick={addFlow}>Add the first session</button></div>}<div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? "Saving…" : program ? "Save changes" : "Create program"}<Check size={16} /></button></div></form></ModalFrame>;
+  return <ModalFrame title={program ? "Edit your program" : "Create a program"} eyebrow="PROGRAM DETAILS" onClose={onClose} className="program-modal"><form className="modal-form" onSubmit={submit}><div className="form-grid form-grid-two"><Field label="Program name"><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Secretariat Year-End Gathering" required /></Field><Field label="Theme" optional><input value={theme} onChange={(event) => setTheme(event.target.value)} placeholder="A theme for the gathering" /></Field></div><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="A short introduction to the event" /></Field><div className="form-grid form-grid-three"><Field label="Date from"><input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); if (!dateTo) setDateTo(event.target.value); }} required /></Field><Field label="Date to"><input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} min={dateFrom} required /></Field><Field label="Venue"><input value={venue} onChange={(event) => setVenue(event.target.value)} placeholder="Event venue" required /></Field></div><div className="form-section-title flow-form-heading"><strong>Daily program flow</strong><button type="button" className="small-add-button" onClick={addFlow}><Plus size={14} /> Add session</button></div>{flow.length ? <div className="flow-editor-list">{flow.map((entry, index) => <div className="flow-editor-card" key={entry.id}><div className="flow-editor-top"><span>SESSION {String(index + 1).padStart(2, "0")}</span><button type="button" onClick={() => removeFlow(index)} aria-label="Remove session"><Trash2 size={14} /></button></div><div className="form-grid form-grid-four"><Field label="Date"><input type="date" min={dateFrom || undefined} max={dateTo || undefined} value={entry.date} onChange={(event) => patchFlow(index, "date", event.target.value)} /></Field><Field label="Starts"><input type="time" value={entry.startTime} onChange={(event) => patchFlow(index, "startTime", event.target.value)} /></Field><Field label="Ends"><input type="time" value={entry.endTime} onChange={(event) => patchFlow(index, "endTime", event.target.value)} /></Field><Field label="Session title"><input value={entry.title} onChange={(event) => patchFlow(index, "title", event.target.value)} placeholder="Opening remarks" /></Field></div><div className="form-grid form-grid-two"><Field label="Description" optional><input value={entry.description} onChange={(event) => patchFlow(index, "description", event.target.value)} /></Field><Field label="Speaker / lead" optional><input value={entry.speaker} onChange={(event) => patchFlow(index, "speaker", event.target.value)} /></Field></div></div>)}</div> : <div className="flow-empty"><ClipboardList size={18} /><span>No sessions added. You can add the daily flow now or later.</span><button type="button" onClick={addFlow}>Add the first session</button></div>}<div className="modal-actions"><button type="button" className="button button-quiet" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}>{busy ? "Saving…" : program ? "Save changes" : "Create program"}<Check size={16} /></button></div></form></ModalFrame>;
 }
 
 function RoomModal({ programId, room, busy, onClose, onSave }: { programId: string; room: RoomRecord | null; busy: boolean; onClose: () => void; onSave: (values: Omit<RoomRecord, "id" | "finalized">, id?: string) => Promise<void> }) {
