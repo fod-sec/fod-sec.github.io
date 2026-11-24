@@ -448,13 +448,12 @@ export default function Home() {
   return (
     <main className="app-shell">
       <div className="ambient ambient-one" aria-hidden="true" /><div className="ambient ambient-two" aria-hidden="true" />
-      <header className="topbar">
+      {signedIn && <header className="topbar">
         <button className="brand" type="button" onClick={() => signedIn && goTo("home")} aria-label="The Secretariat home">
-          <span className="brand-mark"><Image src="/colored-logo.png" alt="" width={40} height={40} /></span>
+          <span className="brand-mark"><Image src="/white-logo.png" alt="" width={40} height={40} /></span>
           <span className="brand-copy"><strong>THE SECRETARIAT</strong><small>PROGRAMS · PEOPLE · PLACE</small></span>
         </button>
-        {signedIn ? <>
-          <nav className="main-nav" aria-label="Main navigation">
+        <nav className="main-nav" aria-label="Main navigation">
             {role === "guest" ? <>
               <NavButton active={view === "program"} onClick={() => goTo("program")} icon={<CalendarDays size={16} />}>Program</NavButton>
               <NavButton active={view === "contest"} onClick={() => goTo("contest")} icon={<Trophy size={16} />}>Contest</NavButton>
@@ -465,9 +464,8 @@ export default function Home() {
               <NavButton active={view === "room-management"} onClick={() => goTo("room-management")} icon={<DoorOpen size={16} />}>Room Management</NavButton>
             </>}
             <button className="logout-button" type="button" onClick={() => setLogoutConfirmOpen(true)} aria-label="Log out" title="Log out"><LogOut size={17} /></button>
-          </nav>
-        </> : <div className="topbar-kicker">EVENT PROGRAMS / ATTENDANCE / BILLETING</div>}
-      </header>
+        </nav>
+      </header>}
 
       {authLoading ? <div className="loading-screen"><div className="loading-indicator"><LoaderCircle size={25} /></div><p>Loading Secretariat workspace…</p></div> : !signedIn ? (
         <section className="login-page">
