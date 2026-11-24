@@ -646,3 +646,6 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
   .topbar .nav-button { width: 32px; min-width: 32px; height: 32px; }
   .topbar .logout-button { width: 32px; height: 32px; }
 }
+@media (max-width: 680px) {
+  .login-footnote { display: none; }
+}
