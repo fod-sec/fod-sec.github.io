@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.enabled == true;
+    }
+
+    function isAnonymousUser() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function validSummary(data, programId) {
+      return data.keys().hasAll(['programId', 'name', 'sexAtBirth', 'billeting', 'createdAt'])
+        && data.keys().hasOnly(['programId', 'name', 'sexAtBirth', 'billeting', 'createdAt'])
+        && data.programId == programId
+        && data.name is string && data.name.size() > 1 && data.name.size() <= 180
+        && data.sexAtBirth in ['Male', 'Female']
+        && data.billeting in ['Yes', 'No']
+        && data.createdAt == request.time;
+    }
+
+    function validAttendee(data, programId) {
+      return data.keys().hasAll([
+          'programId', 'firstName', 'middleName', 'lastName', 'suffix', 'sexAtBirth',
+          'province', 'municipality', 'barangay', 'office', 'position', 'contactNo',
+          'email', 'billeting', 'foodAllergy', 'createdBy', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'programId', 'firstName', 'middleName', 'lastName', 'suffix', 'sexAtBirth',
+          'province', 'municipality', 'barangay', 'office', 'position', 'contactNo',
+          'email', 'billeting', 'foodAllergy', 'createdBy', 'createdAt'
+        ])
+        && data.programId == programId
+        && data.firstName is string && data.firstName.size() > 0 && data.firstName.size() <= 100
+        && data.middleName is string && data.middleName.size() <= 100
+        && data.lastName is string && data.lastName.size() > 0 && data.lastName.size() <= 100
+        && data.suffix is string && data.suffix in ['', 'Jr.', 'Sr.', 'II', 'III', 'IV']
+        && data.sexAtBirth in ['Male', 'Female']
+        && data.province is string && data.province.size() > 0 && data.province.size() <= 100
+        && data.municipality is string && data.municipality.size() > 0 && data.municipality.size() <= 120
+        && data.barangay is string && data.barangay.size() > 0 && data.barangay.size() <= 120
+        && data.office is string && data.office.size() > 0 && data.office.size() <= 200
+        && data.position is string && data.position.size() > 0 && data.position.size() <= 160
+        && data.contactNo is string && data.contactNo.size() > 5 && data.contactNo.size() <= 40
+        && data.email is string && data.email.size() > 4 && data.email.size() <= 254
+        && data.billeting in ['Yes', 'No']
+        && data.foodAllergy is string && data.foodAllergy.size() <= 500
+        && data.createdBy == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    match /admins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /programs/{programId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /attendees/{attendeeId} {
+      allow get, list: if isAdmin();
+      allow create: if isAnonymousUser()
+        && validAttendee(request.resource.data, request.resource.data.programId)
+        && exists(/databases/$(database)/documents/programs/$(request.resource.data.programId));
+      allow update, delete: if isAdmin();
+    }
+
+    match /attendeeSummaries/{attendeeId} {
+      allow get, list: if signedIn();
+      allow create: if isAnonymousUser()
+        && validSummary(request.resource.data, request.resource.data.programId)
+        && exists(/databases/$(database)/documents/programs/$(request.resource.data.programId));
+      allow update, delete: if isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /roomAssignments/{attendeeId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasAll([
+          'programId', 'attendeeId', 'attendeeName', 'sexAtBirth', 'building', 'roomNo', 'sexScope'
+        ])
+        && request.resource.data.attendeeId == attendeeId
+        && request.resource.data.attendeeName is string
+        && request.resource.data.sexAtBirth in ['Male', 'Female']
+        && request.resource.data.sexScope == request.resource.data.sexAtBirth;
+      allow delete: if isAdmin();
+    }
+  }
+}
