@@ -10,9 +10,9 @@ import {
   type User,
 } from "firebase/auth";
 import {
-  ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown,
+  ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown, Download,
   CircleHelp, ClipboardList, DoorOpen, Edit3, FilePlus2, Flower2, KeyRound,
-  LoaderCircle, LogOut, Mail, MapPin, Plus, Search, Trash2, Trophy, UsersRound,
+  LoaderCircle, LogOut, Mail, MapPin, Plus, Printer, Trash2, Trophy, UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -64,6 +64,16 @@ function displayName(person: Pick<AttendeeFormValues, "firstName" | "middleName"
   return [person.firstName, person.middleName, person.lastName, person.suffix].filter(Boolean).join(" ");
 }
 
+function attendanceSheetName(person: Pick<AttendeeFormValues, "firstName" | "middleName" | "lastName" | "suffix">) {
+  const firstName = person.firstName.trim();
+  const lastName = person.lastName.trim();
+  const suffix = person.suffix.trim();
+  const middleName = person.middleName.trim();
+  const middleInitial = middleName ? `${middleName[0].toLocaleUpperCase("en")}.` : "";
+  const mainName = lastName && firstName ? `${lastName}, ${firstName}` : [lastName, firstName].filter(Boolean).join(" ");
+  return [mainName, suffix, middleInitial].filter(Boolean).join(" ");
+}
+
 function dateLabel(value: string, options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" }) {
   if (!value) return "Date to be announced";
   const date = new Date(`${value}T12:00:00`);
@@ -87,6 +97,22 @@ function eventRange(program: ProgramRecord) {
     return `${new Intl.DateTimeFormat("en-PH", { month: "long" }).format(start)} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`;
   }
   return `${dateLabel(program.dateFrom)} – ${dateLabel(program.dateTo)}`;
+}
+
+function attendanceDays(program: ProgramRecord) {
+  const flowDates = [...new Set((program.flow ?? []).map((item) => item.date).filter(Boolean))].sort();
+  if (!program.dateFrom) return flowDates;
+  const start = new Date(`${program.dateFrom}T12:00:00Z`);
+  const endValue = program.dateTo || program.dateFrom;
+  const end = new Date(`${endValue}T12:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return flowDates.length ? flowDates : [program.dateFrom];
+  const dates: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end && dates.length < 62) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return [...new Set([...dates, ...flowDates])].sort();
 }
 
 function friendlyError(error: unknown) {
@@ -119,7 +145,7 @@ export default function Home() {
   const [view, setView] = useState<View>("home");
   const [selectedDay, setSelectedDay] = useState("");
   const [attendanceOpen, setAttendanceOpen] = useState(false);
-  const [attendeeListOpen, setAttendeeListOpen] = useState(false);
+  const [attendanceSheetOpen, setAttendanceSheetOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [programModal, setProgramModal] = useState<ProgramRecord | "new" | null>(null);
   const [contestModal, setContestModal] = useState<ContestEntry | "new" | null>(null);
@@ -221,8 +247,7 @@ export default function Home() {
   const day = flowDays.includes(selectedDay) ? selectedDay : flowDays[0] ?? "";
   const visibleFlow = selectedFlow.filter((entry) => !day || entry.date === day);
   const selectedSummaries = summaries.filter((entry) => entry.programId === selectedProgramId);
-  const officeByAttendeeId = useMemo(() => new Map(attendees.map((attendee) => [attendee.id, attendee.office] as const)), [attendees]);
-  const selectedSummariesWithOffice = useMemo(() => selectedSummaries.map((summary) => ({ ...summary, office: summary.office ?? officeByAttendeeId.get(summary.id) ?? "" })), [selectedSummaries, officeByAttendeeId]);
+  const selectedProgramAttendees = useMemo(() => attendees.filter((attendee) => attendee.programId === selectedProgramId), [attendees, selectedProgramId]);
   const counts = useMemo(() => {
     const all = selectedSummaries;
     const sexCount = (list: AttendeeSummary[], sex: "Male" | "Female") => list.filter((item) => item.sexAtBirth === sex).length;
@@ -495,7 +520,7 @@ export default function Home() {
 
           {view === "home" && <>
             <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} attendanceFilter={attendanceFilter} onAttendanceFilterChange={setAttendanceFilter} />
-            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} attendanceFilter={attendanceFilter} onViewAttendees={() => setAttendeeListOpen(true)} />
+            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} attendanceFilter={attendanceFilter} canViewAttendanceSheet={role === "admin"} onViewAttendanceSheet={() => setAttendanceSheetOpen(true)} />
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
                 <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
@@ -516,7 +541,7 @@ export default function Home() {
       </>}
 
       {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><a className="button button-primary" href={VENUE_DIRECTIONS_URL} target="_blank" rel="noopener noreferrer">Get Direction <ArrowRight size={16} /></a></div></ModalFrame>}
-      {attendeeListOpen && <ConfirmedAttendeesModal attendees={selectedSummariesWithOffice} onClose={() => setAttendeeListOpen(false)} />}
+      {attendanceSheetOpen && role === "admin" && selectedProgram && <AttendanceSheetModal program={selectedProgram} attendees={selectedProgramAttendees} onClose={() => setAttendanceSheetOpen(false)} />}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
       {programModal !== null && <ProgramModal key={programModal === "new" ? "new" : programModal.id} program={programModal === "new" ? null : programModal} busy={busy} onClose={() => setProgramModal(null)} onSave={saveProgram} />}
       {contestModal !== null && <ContestModal key={contestModal === "new" ? `new-${selectedProgramId}` : contestModal.id} programs={programs} defaultProgramId={selectedProgramId} contest={contestModal === "new" ? null : contestModal} busy={busy} onClose={() => setContestModal(null)} onSave={saveContest} />}
@@ -539,32 +564,99 @@ function ProgramChooser({ programs, selectedId, onChange, attendanceFilter, onAt
   return <div className={`program-chooser${onAttendanceFilterChange ? " program-chooser-mobile-filter" : ""}`}><div className="chooser-label"><span className="chooser-icon"><CalendarDays size={17} /></span><span><small>SHOWING ATTENDANCE FOR</small><strong>{programs.find((program) => program.id === selectedId)?.title ?? "No program selected"}</strong></span></div><div className="chooser-controls"><label className="select-shell"><span className="sr-only">Select program</span><select value={selectedId} onChange={(event) => onChange(event.target.value)} disabled={!programs.length}><option value="">Choose a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select><ChevronDown size={16} /></label>{onAttendanceFilterChange && <label className="select-shell attendance-filter-shell"><span className="sr-only">Filter attendance summary</span><select value={attendanceFilter ?? ""} onChange={(event) => onAttendanceFilterChange(event.target.value as AttendanceFilter)}><option value="">Please Select</option><option value="billeting">Billeting</option><option value="non-billeting">Non-billeting</option></select><ChevronDown size={16} /></label>}</div></div>;
 }
 
-function StatsPanel({ counts, programTitle, attendanceFilter = "", onViewAttendees }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; attendanceFilter?: AttendanceFilter; onViewAttendees: () => void }) {
+function StatsPanel({ counts, programTitle, attendanceFilter = "", canViewAttendanceSheet, onViewAttendanceSheet }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; attendanceFilter?: AttendanceFilter; canViewAttendanceSheet: boolean; onViewAttendanceSheet: () => void }) {
   const activeCard = attendanceFilter === "billeting" ? "billeting" : attendanceFilter === "non-billeting" ? "non-billeting" : "confirmed";
   const cards = [
     { id: "confirmed", label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "coral", icon: <UsersRound size={19} />, note: "Everyone coming together" },
     { id: "billeting", label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
     { id: "non-billeting", label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
   ];
-  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle}</p></div><button type="button" className="attendee-view-button" onClick={onViewAttendees} aria-haspopup="dialog">View</button></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}${card.id === activeCard ? " stat-card-mobile-active" : ""}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
+  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle}</p></div>{canViewAttendanceSheet && <button type="button" className="attendee-view-button" onClick={onViewAttendanceSheet} aria-haspopup="dialog">Attendance Sheet</button>}</div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}${card.id === activeCard ? " stat-card-mobile-active" : ""}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
 }
 
-function ConfirmedAttendeesModal({ attendees, onClose }: { attendees: AttendeeSummary[]; onClose: () => void }) {
-  const [search, setSearch] = useState("");
-  const [selectedOffice, setSelectedOffice] = useState("");
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })), [attendees]);
-  const offices = useMemo(() => [...new Set(attendees.map((attendee) => (attendee.office ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })), [attendees]);
-  const searchTerm = search.trim().toLocaleLowerCase();
-  const officeTerm = selectedOffice.toLocaleLowerCase();
-  const hasFilters = Boolean(searchTerm || officeTerm);
-  const visibleAttendees = sortedAttendees.filter((attendee) => attendee.name.toLocaleLowerCase().includes(searchTerm) && (!officeTerm || (attendee.office ?? "").trim().toLocaleLowerCase() === officeTerm));
+function AttendanceSheetModal({ program, attendees, onClose }: { program: ProgramRecord; attendees: AttendeeRecord[]; onClose: () => void }) {
+  const days = useMemo(() => attendanceDays(program), [program]);
+  const [selectedDate, setSelectedDate] = useState(days[0] ?? "");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const sheetRef = useRef<HTMLElement>(null);
+  const activeDate = days.includes(selectedDate) ? selectedDate : days[0] ?? "";
+  const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => attendanceSheetName(a).localeCompare(attendanceSheetName(b), "en", { sensitivity: "base" })), [attendees]);
+  const rowCount = Math.max(23, sortedAttendees.length);
+  const printableDate = activeDate ? dateLabel(activeDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "Date to be announced";
 
-  useEffect(() => {
-    if (!window.matchMedia("(max-width: 680px)").matches) searchInputRef.current?.focus();
-  }, []);
+  async function downloadPdf() {
+    if (!sheetRef.current || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfError("");
+    try {
+      const html2pdf = (await import("html2pdf.js")).default;
+      const safeTitle = program.title.trim().replace(/[<>:"|?*\u0000-\u001f]/g, "-").replace(/[\\/]/g, "-").replace(/\s+/g, "-").slice(0, 80) || "program";
+      const filename = `${safeTitle}-${activeDate || "undated"}-attendance-sheet.pdf`;
+      await html2pdf().set({
+        margin: 0.5,
+        filename,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          windowWidth: 1200,
+          onclone: (clonedDocument: Document) => {
+            const sheet = clonedDocument.querySelector<HTMLElement>(".attendance-sheet-print");
+            if (!sheet) return;
+            const styles = clonedDocument.createElement("style");
+            styles.textContent = `
+              .attendance-sheet-print { width: 12in !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important; box-sizing: border-box !important; color: #111 !important; background: #fff !important; font-family: Cambria, "Times New Roman", serif !important; font-size: 9pt !important; }
+              .attendance-sheet-letterhead { min-height: .78in !important; gap: .12in !important; }
+              .attendance-sheet-letterhead img { width: .68in !important; height: .68in !important; }
+              .attendance-sheet-letterhead p { margin: 0 !important; font-size: 11pt !important; line-height: 1.12 !important; }
+              .attendance-sheet-letterhead strong { font-size: 13pt !important; line-height: 1.12 !important; }
+              .attendance-sheet-title { margin: .12in 0 .18in !important; font: 700 13pt/1.1 Cambria, "Times New Roman", serif !important; }
+              .attendance-sheet-meta { margin-bottom: .16in !important; }
+              .attendance-sheet-meta p { min-height: .17in !important; margin: 0 !important; font: 10pt/1.15 Cambria, "Times New Roman", serif !important; }
+              .attendance-sheet-meta strong { min-width: .75in !important; }
+              .attendance-sheet-table { width: 12in !important; table-layout: fixed !important; border-collapse: collapse !important; font-family: Cambria, "Times New Roman", serif !important; }
+              .attendance-sheet-table th { height: .2in !important; padding: 1px 2px !important; background: #a8d18d !important; font: 700 8pt/1 Cambria, "Times New Roman", serif !important; }
+              .attendance-sheet-table td { height: .2in !important; padding: 1px 2px !important; font: 8pt/1.02 Cambria, "Times New Roman", serif !important; }
+            `;
+            clonedDocument.head.appendChild(styles);
+            sheet.style.setProperty("width", "12in", "important");
+            sheet.style.setProperty("min-width", "0", "important");
+          },
+        },
+        jsPDF: { unit: "in", format: [13, 8.5], orientation: "landscape" },
+      }).from(sheetRef.current).save();
+    } catch {
+      setPdfError("The PDF could not be created. Please try again.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
 
-  return <ModalFrame title="Confirmed attendees" eyebrow="ATTENDEE LIST" onClose={onClose} className="confirmed-attendees-modal"><div className="confirmed-attendees-content"><div className="confirmed-attendee-filters"><label className="field confirmed-attendee-search"><span className="sr-only">Search confirmed attendees by name</span><div className="input-wrap"><Search size={17} aria-hidden="true" /><input ref={searchInputRef} type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name" /></div></label><label className="field confirmed-office-filter"><span className="sr-only">Filter confirmed attendees by office</span><select value={selectedOffice} onChange={(event) => setSelectedOffice(event.target.value)}><option value="">All offices</option>{offices.map((office) => <option key={office} value={office}>{office}</option>)}</select></label></div><p className="confirmed-attendee-count" aria-live="polite">{hasFilters ? `${visibleAttendees.length} matching` : visibleAttendees.length} {visibleAttendees.length === 1 ? "attendee" : "attendees"}</p>{visibleAttendees.length ? <ul className="confirmed-attendee-list" aria-label="Confirmed attendee names">{visibleAttendees.map((attendee) => <li key={attendee.id}>{attendee.name}</li>)}</ul> : <p className="confirmed-attendee-empty" role="status">{attendees.length ? "No attendees match these filters." : "No confirmed attendees yet."}</p>}</div></ModalFrame>;
+  return <ModalFrame title="Attendance sheet" eyebrow="DAILY ATTENDANCE" onClose={onClose} className="attendance-sheet-modal" printable>
+    <div className="attendance-sheet-controls">
+      <label className="field"><span>Attendance date</span><select value={activeDate} onChange={(event) => setSelectedDate(event.target.value)} disabled={!days.length}>{days.length ? days.map((date) => <option key={date} value={date}>{dateLabel(date, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</option>) : <option value="">No event dates available</option>}</select></label>
+      <p>Choose a day, then print or download the attendance sheet.</p>
+      <button type="button" className="button button-outline" onClick={() => window.print()}><Printer size={16} /> Print</button>
+      <button type="button" className="button button-primary" onClick={downloadPdf} disabled={pdfBusy}><Download size={16} /> {pdfBusy ? "Creating PDF…" : "Download PDF"}</button>
+      {pdfError && <p className="attendance-sheet-error" role="alert">{pdfError}</p>}
+    </div>
+    <div className="attendance-sheet-preview-scroll"><article ref={sheetRef} className="attendance-sheet-print" aria-label={`Attendance sheet for ${printableDate}`}>
+      <header className="attendance-sheet-letterhead"><img src="/da-caraga-logo.jpg" alt="Department of Agriculture Caraga Region logo" /><div><p>Republic of the Philippines</p><strong>DEPARTMENT OF AGRICULTURE</strong><p>Caraga Region</p><p>Capitol Site, Butuan City 8600</p></div></header>
+      <h1 className="attendance-sheet-title">ATTENDANCE SHEET</h1>
+      <div className="attendance-sheet-meta"><p><strong>Activity Title:</strong><span>{program.title}</span></p><p><strong>Venue:</strong><span>{program.venue}</span></p><p><strong>Date:</strong><span>{printableDate}</span></p></div>
+      <table className="attendance-sheet-table">
+        <colgroup><col className="attendance-col-number" /><col className="attendance-col-name" /><col className="attendance-col-office" /><col className="attendance-col-position" /><col className="attendance-col-contact" />{Array.from({ length: 6 }, (_, index) => <col key={index} className="attendance-col-signature" />)}</colgroup>
+        <thead><tr><th rowSpan={2}>NO.</th><th rowSpan={2}>NAME</th><th rowSpan={2}>OFFICE/ADDRESS</th><th rowSpan={2}>DESIGNATION/POSITION</th><th rowSpan={2}>CONTACT NO.</th><th colSpan={6}>SIGNATURE</th></tr><tr><th>BREAKFAST</th><th>AM SNACKS</th><th>LUNCH</th><th>PM SNACKS</th><th>DINNER</th><th>BILLETING</th></tr></thead>
+        <tbody>{Array.from({ length: rowCount }, (_, index) => {
+          const attendee = sortedAttendees[index];
+          const address = attendee ? [attendee.office, [attendee.barangay, attendee.municipality, attendee.province].filter(Boolean).join(", ")].filter(Boolean).join(" / ") : "";
+          return <tr key={attendee?.id ?? `blank-${index}`}><td>{attendee ? index + 1 : ""}</td><td>{attendee ? attendanceSheetName(attendee) : ""}</td><td>{address}</td><td>{attendee?.position ?? ""}</td><td>{attendee?.contactNo ?? ""}</td>{Array.from({ length: 6 }, (_, signatureIndex) => <td key={signatureIndex} />)}</tr>;
+        })}</tbody>
+      </table>
+    </article></div>
+  </ModalFrame>;
 }
 
 function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, onViewMap }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; onViewMap: () => void }) {
@@ -638,13 +730,13 @@ function RoomManagement({ programs, program, rooms, assignments, attendees, unas
   return <section className="content-section manage-section"><div className="room-manage-top"><ProgramChooser programs={programs} selectedId={program?.id ?? ""} onChange={onSelect} /><button className="button button-outline" onClick={onCreate} disabled={!program}><Plus size={16} /> Add room</button></div><div className="room-summary-strip"><div><span>REGISTERED</span><strong>{attendees.length}</strong></div><div><span>REQUESTED BILLETING</span><strong>{attendees.filter((entry) => entry.billeting === "Yes").length}</strong></div><div><span>ASSIGNED</span><strong>{assignments.length}</strong></div><div className={unassignedCount ? "summary-alert" : ""}><span>NEED A ROOM</span><strong>{unassignedCount}</strong></div></div><div className="manage-heading room-manage-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ROOM MANAGEMENT</span><h2>{program?.title ?? "Choose a program"}</h2><p>Add rooms with capacity and matching sex scope, then finalize assignments.</p></div><button className="button button-primary" onClick={onFinalize} disabled={!program || !rooms.length}><Check size={17} /> Finalize room assignment</button></div><div className="room-card-grid">{rooms.length ? [...rooms].sort((a, b) => `${a.building}-${a.roomNo}`.localeCompare(`${b.building}-${b.roomNo}`)).map((room) => <article className="room-manage-card clay-card" key={room.id}><div className="room-card-top"><span className={`room-type-icon ${room.sexScope.toLowerCase()}`}><DoorOpen size={18} /></span><span className={room.finalized ? "finalized-tag" : "draft-tag"}><span /> {room.finalized ? "FINALIZED" : "READY TO ASSIGN"}</span></div><span className="room-building-label">{room.building}</span><div className="room-number-heading">Room {room.roomNo}</div><div className="room-card-meta"><span className={`sex-tag ${room.sexScope.toLowerCase()}`}>{room.sexScope} only</span><span>{roomUse(room)} / {room.capacity} beds</span></div><div className="room-capacity-track"><span style={{ width: `${Math.min(100, room.capacity ? roomUse(room) / room.capacity * 100 : 0)}%` }} /></div><div className="room-card-actions"><button type="button" onClick={() => onEdit(room)}><Edit3 size={14} /> Edit</button><button type="button" onClick={() => onDelete(room)}><Trash2 size={14} /> Remove</button></div></article>) : <div className="room-empty-card clay-card"><span className="empty-icon"><DoorOpen size={22} /></span><strong>No rooms added yet</strong><span>Rooms are set up separately for each program.</span><button className="button button-outline" onClick={onCreate} disabled={!program}><Plus size={15} /> Add a room</button></div>}</div><div className="assignment-footnote"><span><strong>Automatic placement</strong>Attendees are assigned in name order to a room with matching sex scope and available capacity. Edit rooms anytime and finalize again to refresh the placements.</span><span className="assigned-badge"><CheckCircle2 size={15} /> {allocated.size} placed</span></div></section>;
 }
 
-function ModalFrame({ title, eyebrow, children, onClose, className = "" }: { title: string; eyebrow?: string; children: React.ReactNode; onClose: () => void; className?: string }) {
+function ModalFrame({ title, eyebrow, children, onClose, className = "", printable = false }: { title: string; eyebrow?: string; children: React.ReactNode; onClose: () => void; className?: string; printable?: boolean }) {
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className={`modal-card clay-card ${className}`} role="dialog" aria-modal="true" aria-label={title}><header className="modal-header"><div>{eyebrow && <span className="eyebrow">{eyebrow}</span>}<h2>{title}</h2></div><button className="modal-close" type="button" onClick={onClose} aria-label="Close"><X size={19} /></button></header>{children}</section></div>;
+  return <div className={`modal-backdrop${printable ? " attendance-sheet-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className={`modal-card clay-card ${className}`} role="dialog" aria-modal="true" aria-label={title}><header className="modal-header"><div>{eyebrow && <span className="eyebrow">{eyebrow}</span>}<h2>{title}</h2></div><button className="modal-close" type="button" onClick={onClose} aria-label="Close"><X size={19} /></button></header>{children}</section></div>;
 }
 
 function AttendanceModal({ program, busy, existingNames, onClose, onSubmit }: { program: ProgramRecord; busy: boolean; existingNames: string[]; onClose: () => void; onSubmit: (values: AttendeeFormValues) => Promise<void> }) {
