@@ -31,7 +31,7 @@ type AttendeeFormValues = {
 };
 
 const PASSCODE = "fod";
-const VENUE_MAP_EMBED_URL = "https://maps.google.com/maps?q=8.97901813439178%2C125.43881061100534&z=16&output=embed";
+const VENUE_MAP_EMBED_URL = "https://maps.google.com/maps?q=8.97901813439178%2C125.43881061100534&z=16&t=k&output=embed";
 const VENUE_DIRECTIONS_URL = "https://www.google.com/maps/dir/?api=1&destination=8.97901813439178%2C125.43881061100534";
 const ACCESS_STORAGE_KEY = "fod-secretariat-access";
 const allProvinceData = locations as GeoProvince[];

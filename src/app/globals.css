@@ -460,6 +460,7 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
   gap: 14px;
 }
 .map-modal-details > span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+.map-modal-details .button, .map-modal-details .button:hover { text-decoration: none; }
 @media (max-width: 680px) {
   .map-modal-frame { height: 55svh; min-height: 230px; margin: 14px 15px 0; }
   .map-modal-details { min-height: 58px; padding: 11px 15px 15px; }
