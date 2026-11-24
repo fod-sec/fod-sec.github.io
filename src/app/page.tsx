@@ -15,7 +15,7 @@ import {
   LoaderCircle, LogOut, Mail, MapPin, Plus, Search, Trash2, Trophy, UsersRound,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import locations from "@/data/locations.json";
 import { auth, db, type AttendeeRecord, type AttendeeSummary, type ContestCriterion, type ContestEntry, type ProgramFlowItem, type ProgramRecord, type RoomAssignment, type RoomRecord } from "@/lib/firebase";
 
@@ -540,11 +540,16 @@ function StatsPanel({ counts, programTitle, onViewAttendees }: { counts: { confi
 
 function ConfirmedAttendeesModal({ attendees, onClose }: { attendees: AttendeeSummary[]; onClose: () => void }) {
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })), [attendees]);
   const searchTerm = search.trim().toLocaleLowerCase();
   const visibleAttendees = sortedAttendees.filter((attendee) => attendee.name.toLocaleLowerCase().includes(searchTerm));
 
-  return <ModalFrame title="Confirmed attendees" eyebrow="ATTENDEE LIST" onClose={onClose} className="confirmed-attendees-modal"><div className="confirmed-attendees-content"><label className="field confirmed-attendee-search"><span className="sr-only">Search confirmed attendees by name</span><div className="input-wrap"><Search size={17} aria-hidden="true" /><input autoFocus type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name" /></div></label><p className="confirmed-attendee-count" aria-live="polite">{searchTerm ? `${visibleAttendees.length} matching` : visibleAttendees.length} {visibleAttendees.length === 1 ? "attendee" : "attendees"}</p>{visibleAttendees.length ? <ul className="confirmed-attendee-list" aria-label="Confirmed attendee names">{visibleAttendees.map((attendee) => <li key={attendee.id}>{attendee.name}</li>)}</ul> : <p className="confirmed-attendee-empty" role="status">{attendees.length ? "No names match your search." : "No confirmed attendees yet."}</p>}</div></ModalFrame>;
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 680px)").matches) searchInputRef.current?.focus();
+  }, []);
+
+  return <ModalFrame title="Confirmed attendees" eyebrow="ATTENDEE LIST" onClose={onClose} className="confirmed-attendees-modal"><div className="confirmed-attendees-content"><label className="field confirmed-attendee-search"><span className="sr-only">Search confirmed attendees by name</span><div className="input-wrap"><Search size={17} aria-hidden="true" /><input ref={searchInputRef} type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name" /></div></label><p className="confirmed-attendee-count" aria-live="polite">{searchTerm ? `${visibleAttendees.length} matching` : visibleAttendees.length} {visibleAttendees.length === 1 ? "attendee" : "attendees"}</p>{visibleAttendees.length ? <ul className="confirmed-attendee-list" aria-label="Confirmed attendee names">{visibleAttendees.map((attendee) => <li key={attendee.id}>{attendee.name}</li>)}</ul> : <p className="confirmed-attendee-empty" role="status">{attendees.length ? "No names match your search." : "No confirmed attendees yet."}</p>}</div></ModalFrame>;
 }
 
 function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, onViewMap }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; onViewMap: () => void }) {
