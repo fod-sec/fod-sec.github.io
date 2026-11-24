@@ -109,6 +109,7 @@ export default function Home() {
   const [view, setView] = useState<View>("home");
   const [selectedDay, setSelectedDay] = useState("");
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [attendeeListOpen, setAttendeeListOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [programModal, setProgramModal] = useState<ProgramRecord | "new" | null>(null);
   const [contestModal, setContestModal] = useState<ContestEntry | "new" | null>(null);
@@ -484,7 +485,7 @@ export default function Home() {
 
           {view === "home" && <>
             <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} />
-            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} attendees={selectedSummaries} />
+            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} onViewAttendees={() => setAttendeeListOpen(true)} />
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
                 <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
@@ -505,6 +506,7 @@ export default function Home() {
       </>}
 
       {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><a className="button button-primary" href={VENUE_DIRECTIONS_URL} target="_blank" rel="noopener noreferrer">Get Direction <ArrowRight size={16} /></a></div></ModalFrame>}
+      {attendeeListOpen && <ConfirmedAttendeesModal attendees={selectedSummaries} onClose={() => setAttendeeListOpen(false)} />}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
       {programModal !== null && <ProgramModal key={programModal === "new" ? "new" : programModal.id} program={programModal === "new" ? null : programModal} busy={busy} onClose={() => setProgramModal(null)} onSave={saveProgram} />}
       {contestModal !== null && <ContestModal key={contestModal === "new" ? `new-${selectedProgramId}` : contestModal.id} programs={programs} defaultProgramId={selectedProgramId} contest={contestModal === "new" ? null : contestModal} busy={busy} onClose={() => setContestModal(null)} onSave={saveContest} />}
@@ -527,23 +529,22 @@ function ProgramChooser({ programs, selectedId, onChange }: { programs: ProgramR
   return <div className="program-chooser"><div className="chooser-label"><span className="chooser-icon"><CalendarDays size={17} /></span><span><small>SHOWING ATTENDANCE FOR</small><strong>{programs.find((program) => program.id === selectedId)?.title ?? "No program selected"}</strong></span></div><label className="select-shell"><span className="sr-only">Select program</span><select value={selectedId} onChange={(event) => onChange(event.target.value)} disabled={!programs.length}><option value="">Choose a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select><ChevronDown size={16} /></label></div>;
 }
 
-function StatsPanel({ counts, programTitle, attendees }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; attendees: AttendeeSummary[] }) {
-  const [attendeeViewOpen, setAttendeeViewOpen] = useState(false);
-  const [attendeeSearch, setAttendeeSearch] = useState("");
-  const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })), [attendees]);
-  const searchTerm = attendeeSearch.trim().toLocaleLowerCase();
-  const visibleAttendees = sortedAttendees.filter((attendee) => attendee.name.toLocaleLowerCase().includes(searchTerm));
+function StatsPanel({ counts, programTitle, onViewAttendees }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; onViewAttendees: () => void }) {
   const cards = [
     { label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "coral", icon: <UsersRound size={19} />, note: "Everyone coming together" },
     { label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
     { label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
   ];
-  function closeAttendeeView() {
-    setAttendeeViewOpen(false);
-    setAttendeeSearch("");
-  }
+  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle} <span>·</span> Attendance counts</p></div><button type="button" className="attendee-view-button" onClick={onViewAttendees} aria-haspopup="dialog">View</button></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
+}
 
-  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle} <span>·</span> Attendance counts</p></div><button type="button" className="attendee-view-button" onClick={() => { setAttendeeSearch(""); setAttendeeViewOpen(true); }} aria-haspopup="dialog">View</button></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div>{attendeeViewOpen && <ModalFrame title="Confirmed attendees" eyebrow="ATTENDEE LIST" onClose={closeAttendeeView} className="confirmed-attendees-modal"><div className="confirmed-attendees-content"><label className="field confirmed-attendee-search"><span className="sr-only">Search confirmed attendees by name</span><div className="input-wrap"><Search size={17} aria-hidden="true" /><input autoFocus type="search" value={attendeeSearch} onChange={(event) => setAttendeeSearch(event.target.value)} placeholder="Search by name" /></div></label><p className="confirmed-attendee-count" aria-live="polite">{searchTerm ? `${visibleAttendees.length} matching` : visibleAttendees.length} {visibleAttendees.length === 1 ? "attendee" : "attendees"}</p>{visibleAttendees.length ? <ul className="confirmed-attendee-list" aria-label="Confirmed attendee names">{visibleAttendees.map((attendee) => <li key={attendee.id}>{attendee.name}</li>)}</ul> : <p className="confirmed-attendee-empty" role="status">{attendees.length ? "No names match your search." : "No confirmed attendees yet."}</p>}</div></ModalFrame>}</section>;
+function ConfirmedAttendeesModal({ attendees, onClose }: { attendees: AttendeeSummary[]; onClose: () => void }) {
+  const [search, setSearch] = useState("");
+  const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })), [attendees]);
+  const searchTerm = search.trim().toLocaleLowerCase();
+  const visibleAttendees = sortedAttendees.filter((attendee) => attendee.name.toLocaleLowerCase().includes(searchTerm));
+
+  return <ModalFrame title="Confirmed attendees" eyebrow="ATTENDEE LIST" onClose={onClose} className="confirmed-attendees-modal"><div className="confirmed-attendees-content"><label className="field confirmed-attendee-search"><span className="sr-only">Search confirmed attendees by name</span><div className="input-wrap"><Search size={17} aria-hidden="true" /><input autoFocus type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by name" /></div></label><p className="confirmed-attendee-count" aria-live="polite">{searchTerm ? `${visibleAttendees.length} matching` : visibleAttendees.length} {visibleAttendees.length === 1 ? "attendee" : "attendees"}</p>{visibleAttendees.length ? <ul className="confirmed-attendee-list" aria-label="Confirmed attendee names">{visibleAttendees.map((attendee) => <li key={attendee.id}>{attendee.name}</li>)}</ul> : <p className="confirmed-attendee-empty" role="status">{attendees.length ? "No names match your search." : "No confirmed attendees yet."}</p>}</div></ModalFrame>;
 }
 
 function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, onViewMap }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; onViewMap: () => void }) {
