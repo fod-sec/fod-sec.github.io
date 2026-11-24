@@ -287,3 +287,24 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 @media (max-width: 390px) {
   .welcome-decoration { width: 58px; }.decoration-ring { width: 49px; height: 49px; }.welcome-row h1 { font-size: 35px; }.chooser-label strong { max-width: 105px; }.select-shell { min-width: 94px; }.form-grid-two, .form-grid-three { grid-template-columns: 1fr 1fr; }.program-list-card { gap: 8px; }.program-list-copy h3 { font-size: 14px; }
 }
+
+/* Larger text across desktop and mobile for comfortable reading. */
+.app-shell { font-size: 16px; }
+.app-shell p { font-size: max(14px, .95em) !important; }
+.app-shell small,
+.app-shell span { font-size: max(12px, .75em) !important; }
+.app-shell button { font-size: max(13px, .875em) !important; }
+.app-shell label { font-size: max(13px, .875em) !important; }
+.app-shell input,
+.app-shell select,
+.app-shell textarea { font-size: max(14px, .875em) !important; }
+.app-shell th,
+.app-shell td { font-size: max(13px, .875em) !important; }
+.app-shell .eyebrow { font-size: max(11px, .75em) !important; }
+.app-shell .chooser-label strong { font-size: 14px !important; }
+.app-shell .gender-counts strong { font-size: 15px !important; }
+.app-shell .feature-copy h2 { font-size: 21px; }
+.app-shell .timeline-copy h3,
+.app-shell .program-list-copy h3 { font-size: 18px; }
+.app-shell .brand-copy strong { font-size: 13px; }
+.app-shell .welcome-row h1 { line-height: 1.14; }
