@@ -89,6 +89,7 @@ export type AttendeeSummary = {
   programId: string;
   name: string;
   sexAtBirth: "Male" | "Female";
+  office?: string;
   billeting: "Yes" | "No";
   createdAt?: unknown;
 };

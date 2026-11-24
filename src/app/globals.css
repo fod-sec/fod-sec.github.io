@@ -286,7 +286,9 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 .modal-form { padding: 17px 22px 20px; display: grid; gap: 14px; }.modal-form .field { gap: 6px; font-size: 9px; }.modal-form .field input, .modal-form .field select, .modal-form .field textarea { min-height: 37px; padding: 8px 9px; border-radius: 8px; font-size: 10px; }.modal-form .field select:disabled { color: #ABA6A2; background: #f3f2eb; cursor: not-allowed; }.modal-form .field textarea { resize: vertical; line-height: 1.5; }
 .confirmed-attendees-modal { width: min(100%, 520px); }
 .confirmed-attendees-content { padding: 17px 22px 22px; }
-.confirmed-attendee-search { margin-bottom: 12px; }
+.confirmed-attendee-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, .62fr); align-items: start; gap: 10px; margin-bottom: 12px; }
+.confirmed-attendee-search { margin: 0; }
+.confirmed-office-filter select { min-height: 43px; padding-right: 26px; }
 .confirmed-attendee-count { margin: 0 0 8px; color: #8D828A; font-size: 10px; }
 .confirmed-attendee-list { max-height: min(52vh, 430px); margin: 0; padding: 0; overflow-y: auto; border-top: 1px solid #ebe7e2; list-style: none; }
 .confirmed-attendee-list li { padding: 11px 12px; border-bottom: 1px solid #ebe7e2; color: var(--plum-deep); font-size: 13px; overflow-wrap: anywhere; }
@@ -522,6 +524,12 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 @media (max-width: 680px) {
   .map-modal-frame { height: 55svh; min-height: 230px; margin: 14px 15px 0; }
   .map-modal-details { min-height: 58px; padding: 11px 15px 15px; }
+}
+
+@media (max-width: 680px) {
+  .modal-form .field input:not([type="checkbox"]),
+  .modal-form .field textarea,
+  .input-wrap input { font-size: 16px; }
 }
 @media (max-width: 680px) {
   .brand-copy small { display: none; }

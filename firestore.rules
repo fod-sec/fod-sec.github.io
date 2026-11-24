@@ -16,11 +16,12 @@ service cloud.firestore {
     }
 
     function validSummary(data, programId) {
-      return data.keys().hasAll(['programId', 'name', 'sexAtBirth', 'billeting', 'createdAt'])
-        && data.keys().hasOnly(['programId', 'name', 'sexAtBirth', 'billeting', 'createdAt'])
+      return data.keys().hasAll(['programId', 'name', 'sexAtBirth', 'office', 'billeting', 'createdAt'])
+        && data.keys().hasOnly(['programId', 'name', 'sexAtBirth', 'office', 'billeting', 'createdAt'])
         && data.programId == programId
         && data.name is string && data.name.size() > 1 && data.name.size() <= 180
         && data.sexAtBirth in ['Male', 'Female']
+        && data.office is string && data.office.size() > 0 && data.office.size() <= 200
         && data.billeting in ['Yes', 'No']
         && data.createdAt == request.time;
     }
