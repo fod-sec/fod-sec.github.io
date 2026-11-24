@@ -11,7 +11,7 @@ import {
 import {
   ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown,
   CircleHelp, ClipboardList, DoorOpen, Edit3, FilePlus2, Flower2, KeyRound,
-  LogOut, Mail, MapPin, Menu, Plus, Snowflake, Sparkles, Trash2, UsersRound,
+  LogOut, Mail, MapPin, Menu, Plus, Sun, Sparkles, Trash2, UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
@@ -416,10 +416,10 @@ export default function Home() {
             </>}
             <button className="logout-button" type="button" onClick={logout} aria-label="Log out" title="Log out"><LogOut size={17} /></button>
           </nav>
-        </> : <div className="topbar-kicker"><Snowflake size={15} /> A little order for the season</div>}
+        </> : <div className="topbar-kicker"><Sun size={15} /> Gathered in warm light</div>}
       </header>
 
-      {authLoading ? <div className="loading-screen"><div className="loading-snow"><Snowflake size={25} /></div><p>Opening the doors…</p></div> : !signedIn ? (
+      {authLoading ? <div className="loading-screen"><div className="loading-sun"><Sun size={25} /></div><p>Opening the doors…</p></div> : !signedIn ? (
         <section className="login-page">
           <div className="login-decoration ornament-left">✳</div><div className="login-decoration ornament-right">✧</div>
           <div className="login-intro"><span className="eyebrow"><span className="eyebrow-line" /> WELCOME TO THE SECRETARIAT</span><h1>Gather well.<br /><em>Everything in place.</em></h1><p>Your event desk for the program, attendance, and a good night’s rest.</p></div>
@@ -489,9 +489,9 @@ function ProgramChooser({ programs, selectedId, onChange }: { programs: ProgramR
 
 function StatsPanel({ counts, programTitle }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string }) {
   const cards = [
-    { label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "berry", icon: <UsersRound size={19} />, note: "Everyone coming together" },
-    { label: "WITH BILLETING", details: counts.billeted, color: "pine", icon: <DoorOpen size={19} />, note: "A room for the night" },
-    { label: "WITHOUT BILLETING", details: counts.noBilleting, color: "gold", icon: <Flower2 size={19} />, note: "Making their own way" },
+    { label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "coral", icon: <UsersRound size={19} />, note: "Everyone coming together" },
+    { label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
+    { label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
   ];
   return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> THE GATHERING</span><h2>Here’s who’s coming.</h2><p>{programTitle} <span>·</span> Live attendance counts</p></div><span className="live-pill"><span className="status-dot" /> LIVE</span></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span><span className="stat-sparkle">✳</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div><div className="gender-total"><span>Total</span><strong>{card.details.total}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
 }
