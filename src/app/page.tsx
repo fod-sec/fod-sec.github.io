@@ -12,7 +12,7 @@ import {
 import {
   ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronDown,
   CircleHelp, ClipboardList, DoorOpen, Edit3, FilePlus2, Flower2, KeyRound,
-  LoaderCircle, LogOut, Mail, MapPin, Plus, Trash2, Trophy, UsersRound,
+  LoaderCircle, LogOut, Mail, MapPin, Plus, Search, Trash2, Trophy, UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
@@ -460,7 +460,7 @@ export default function Home() {
         <section className="login-page">
           <div className="login-intro"><span className="eyebrow"><span className="eyebrow-line" /> THE SECRETARIAT</span><h1>Manage events.<br /><em>With confidence.</em></h1><p>Coordinate program schedules, attendance, and room assignments in one place.</p></div>
           <div className="login-card clay-card">
-            <h2>{authView === "access" ? "Welcome." : "Admin sign in."}</h2>
+            <h2>{authView === "access" ? "Welcome." : "Login."}</h2>
             <p>{authView === "access" ? "Enter the access code to view your program and confirm attendance." : "Use your Secretariat admin account to manage the event."}</p>
             {authView === "access" ? <form className="auth-form" onSubmit={enterGuest}>
               <label className="field"><span>Access code</span><div className="input-wrap"><KeyRound size={17} /><input autoComplete="off" value={accessCode} onChange={(event) => setAccessCode(event.target.value)} type="password" placeholder="Enter your access code" required /></div></label>
@@ -471,7 +471,7 @@ export default function Home() {
               <button className="button button-primary button-full" disabled={busy}>{busy ? <><span className="button-spinner" /> Signing in…</> : <>Sign in <ArrowRight size={17} /></>}</button>
             </form>}
             <div className="login-divider"><span /> <small>OR</small> <span /></div>
-            <button className="text-link" type="button" onClick={() => setAuthView(authView === "access" ? "admin" : "access")}>{authView === "access" ? "Admin sign in" : "Back to access code"}<ArrowRight size={15} /></button>
+            <button className="text-link" type="button" onClick={() => setAuthView(authView === "access" ? "admin" : "access")}>{authView === "access" ? "Login" : "Back to access code"}<ArrowRight size={15} /></button>
           </div>
           <div className="login-footnote">Event details, attendance, and billeting in one workspace.</div>
         </section>
@@ -484,7 +484,7 @@ export default function Home() {
 
           {view === "home" && <>
             <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} />
-            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} />
+            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} attendees={selectedSummaries} />
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
                 <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
@@ -527,13 +527,23 @@ function ProgramChooser({ programs, selectedId, onChange }: { programs: ProgramR
   return <div className="program-chooser"><div className="chooser-label"><span className="chooser-icon"><CalendarDays size={17} /></span><span><small>SHOWING ATTENDANCE FOR</small><strong>{programs.find((program) => program.id === selectedId)?.title ?? "No program selected"}</strong></span></div><label className="select-shell"><span className="sr-only">Select program</span><select value={selectedId} onChange={(event) => onChange(event.target.value)} disabled={!programs.length}><option value="">Choose a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select><ChevronDown size={16} /></label></div>;
 }
 
-function StatsPanel({ counts, programTitle }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string }) {
+function StatsPanel({ counts, programTitle, attendees }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; attendees: AttendeeSummary[] }) {
+  const [attendeeViewOpen, setAttendeeViewOpen] = useState(false);
+  const [attendeeSearch, setAttendeeSearch] = useState("");
+  const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })), [attendees]);
+  const searchTerm = attendeeSearch.trim().toLocaleLowerCase();
+  const visibleAttendees = sortedAttendees.filter((attendee) => attendee.name.toLocaleLowerCase().includes(searchTerm));
   const cards = [
     { label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "coral", icon: <UsersRound size={19} />, note: "Everyone coming together" },
     { label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
     { label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
   ];
-  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle} <span>·</span> Live attendance counts</p></div><span className="live-pill"><span className="status-dot" /> LIVE</span></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
+  function closeAttendeeView() {
+    setAttendeeViewOpen(false);
+    setAttendeeSearch("");
+  }
+
+  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle} <span>·</span> Attendance counts</p></div><button type="button" className="attendee-view-button" onClick={() => { setAttendeeSearch(""); setAttendeeViewOpen(true); }} aria-haspopup="dialog">View</button></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div>{attendeeViewOpen && <ModalFrame title="Confirmed attendees" eyebrow="ATTENDEE LIST" onClose={closeAttendeeView} className="confirmed-attendees-modal"><div className="confirmed-attendees-content"><label className="field confirmed-attendee-search"><span className="sr-only">Search confirmed attendees by name</span><div className="input-wrap"><Search size={17} aria-hidden="true" /><input autoFocus type="search" value={attendeeSearch} onChange={(event) => setAttendeeSearch(event.target.value)} placeholder="Search by name" /></div></label><p className="confirmed-attendee-count" aria-live="polite">{searchTerm ? `${visibleAttendees.length} matching` : visibleAttendees.length} {visibleAttendees.length === 1 ? "attendee" : "attendees"}</p>{visibleAttendees.length ? <ul className="confirmed-attendee-list" aria-label="Confirmed attendee names">{visibleAttendees.map((attendee) => <li key={attendee.id}>{attendee.name}</li>)}</ul> : <p className="confirmed-attendee-empty" role="status">{attendees.length ? "No names match your search." : "No confirmed attendees yet."}</p>}</div></ModalFrame>}</section>;
 }
 
 function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, onViewMap }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; onViewMap: () => void }) {
