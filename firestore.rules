@@ -42,7 +42,7 @@ service cloud.firestore {
         && data.lastName is string && data.lastName.size() > 0 && data.lastName.size() <= 100
         && data.suffix is string && data.suffix in ['', 'Jr.', 'Sr.', 'II', 'III', 'IV']
         && data.sexAtBirth in ['Male', 'Female']
-        && data.province is string && data.province.size() > 0 && data.province.size() <= 100
+        && data.province in ['Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands', 'Surigao del Norte', 'Surigao del Sur']
         && data.municipality is string && data.municipality.size() > 0 && data.municipality.size() <= 120
         && data.barangay is string && data.barangay.size() > 0 && data.barangay.size() <= 120
         && data.office is string && data.office.size() > 0 && data.office.size() <= 200

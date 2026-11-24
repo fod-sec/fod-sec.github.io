@@ -31,7 +31,16 @@ type AttendeeFormValues = {
 
 const PASSCODE = "fod";
 const ACCESS_STORAGE_KEY = "fod-secretariat-access";
-const provinceData = locations as GeoProvince[];
+const allProvinceData = locations as GeoProvince[];
+const caragaProvinceNames = new Set([
+  "Agusan del Norte", "Agusan del Sur", "Dinagat Islands", "Surigao del Norte", "Surigao del Sur",
+]);
+const butuanCity = allProvinceData.find((entry) => entry.name === "City of Butuan")?.cities ?? [];
+const provinceData = allProvinceData
+  .filter((entry) => caragaProvinceNames.has(entry.name))
+  .map((entry) => entry.name === "Agusan del Norte"
+    ? { ...entry, cities: [...entry.cities, ...butuanCity].sort((a, b) => a.name.localeCompare(b.name)) }
+    : entry);
 const suffixes = ["Jr.", "Sr.", "II", "III", "IV"];
 const emptyAttendee: AttendeeFormValues = {
   firstName: "", middleName: "", lastName: "", suffix: "", sexAtBirth: "Male",

@@ -28,3 +28,5 @@ The `Deploy Secretariat to GitHub Pages` workflow builds the Next.js static expo
 ## Address dropdown data
 
 `src/data/locations.json` contains the Philippine Standard Geographic Code hierarchy bundled for offline use. The pinned 2026 Q2 snapshot was adapted from the [ph-psgc dataset](https://github.com/Tenasia/ph-psgc), which credits the [Philippine Statistics Authority PSGC](https://psa.gov.ph/classification/psgc). Refresh the snapshot when the PSA publishes a new PSGC release.
+
+The attendee form limits province choices to Region XIII’s five provinces. Butuan City is available among Agusan del Norte’s city options.
