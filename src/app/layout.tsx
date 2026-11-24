@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://fod-sec.github.io"),
   title: {
-    default: "The Secretariat | Event Coordination",
+    default: "The Secretariat | Programs, Attendance & Billeting",
     template: "%s | The Secretariat",
   },
   description: "A secure workspace for event programs, attendance confirmations, and room assignments.",
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://fod-sec.github.io",
     siteName: "The Secretariat",
-    title: "The Secretariat | Event Coordination",
+    title: "The Secretariat | Programs, Attendance & Billeting",
     description: "A secure workspace for event programs, attendance confirmations, and room assignments.",
     locale: "en_PH",
     images: [{
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "The Secretariat | Event Coordination",
+    title: "The Secretariat | Programs, Attendance & Billeting",
     description: "A secure workspace for event programs, attendance confirmations, and room assignments.",
     images: ["/opengraph-image.png"],
   },
