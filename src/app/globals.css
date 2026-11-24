@@ -527,9 +527,9 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 }
 
 @media (max-width: 680px) {
-  .modal-form .field input:not([type="checkbox"]),
-  .modal-form .field textarea,
-  .input-wrap input { font-size: 16px; }
+  .app-shell .modal-form .field input:not([type="checkbox"]),
+  .app-shell .modal-form .field textarea,
+  .app-shell .input-wrap input { font-size: 16px !important; }
 }
 @media (max-width: 680px) {
   .brand-copy small { display: none; }
