@@ -20,6 +20,7 @@ import locations from "@/data/locations.json";
 import { auth, db, type AttendeeRecord, type AttendeeSummary, type ContestCriterion, type ContestEntry, type ProgramFlowItem, type ProgramRecord, type RoomAssignment, type RoomRecord } from "@/lib/firebase";
 
 type View = "home" | "program" | "contest" | "rooms" | "programs" | "contest-entries" | "room-management";
+type AttendanceFilter = "" | "billeting" | "non-billeting";
 type Role = "guest" | "admin" | null;
 type GeoCity = { name: string; barangays: string[] };
 type GeoProvince = { name: string; cities: GeoCity[] };
@@ -114,6 +115,7 @@ export default function Home() {
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
   const [assignments, setAssignments] = useState<RoomAssignment[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState("");
+  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("");
   const [view, setView] = useState<View>("home");
   const [selectedDay, setSelectedDay] = useState("");
   const [attendanceOpen, setAttendanceOpen] = useState(false);
@@ -492,8 +494,8 @@ export default function Home() {
           </div>
 
           {view === "home" && <>
-            <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} />
-            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} onViewAttendees={() => setAttendeeListOpen(true)} />
+            <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} attendanceFilter={attendanceFilter} onAttendanceFilterChange={setAttendanceFilter} />
+            <StatsPanel counts={counts} programTitle={selectedProgram?.title ?? "Select a program"} attendanceFilter={attendanceFilter} onViewAttendees={() => setAttendeeListOpen(true)} />
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
                 <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
@@ -533,17 +535,18 @@ function NavButton({ active, onClick, icon, children }: { active: boolean; onCli
   return <button className={`nav-button ${active ? "nav-active" : ""}`} type="button" onClick={onClick} aria-label={label} title={label}>{icon}<span>{children}</span></button>;
 }
 
-function ProgramChooser({ programs, selectedId, onChange }: { programs: ProgramRecord[]; selectedId: string; onChange: (value: string) => void }) {
-  return <div className="program-chooser"><div className="chooser-label"><span className="chooser-icon"><CalendarDays size={17} /></span><span><small>SHOWING ATTENDANCE FOR</small><strong>{programs.find((program) => program.id === selectedId)?.title ?? "No program selected"}</strong></span></div><label className="select-shell"><span className="sr-only">Select program</span><select value={selectedId} onChange={(event) => onChange(event.target.value)} disabled={!programs.length}><option value="">Choose a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select><ChevronDown size={16} /></label></div>;
+function ProgramChooser({ programs, selectedId, onChange, attendanceFilter, onAttendanceFilterChange }: { programs: ProgramRecord[]; selectedId: string; onChange: (value: string) => void; attendanceFilter?: AttendanceFilter; onAttendanceFilterChange?: (value: AttendanceFilter) => void }) {
+  return <div className={`program-chooser${onAttendanceFilterChange ? " program-chooser-mobile-filter" : ""}`}><div className="chooser-label"><span className="chooser-icon"><CalendarDays size={17} /></span><span><small>SHOWING ATTENDANCE FOR</small><strong>{programs.find((program) => program.id === selectedId)?.title ?? "No program selected"}</strong></span></div><div className="chooser-controls"><label className="select-shell"><span className="sr-only">Select program</span><select value={selectedId} onChange={(event) => onChange(event.target.value)} disabled={!programs.length}><option value="">Choose a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select><ChevronDown size={16} /></label>{onAttendanceFilterChange && <label className="select-shell attendance-filter-shell"><span className="sr-only">Filter attendance summary</span><select value={attendanceFilter ?? ""} onChange={(event) => onAttendanceFilterChange(event.target.value as AttendanceFilter)}><option value="">Please Select</option><option value="billeting">Billeting</option><option value="non-billeting">Non-billeting</option></select><ChevronDown size={16} /></label>}</div></div>;
 }
 
-function StatsPanel({ counts, programTitle, onViewAttendees }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; onViewAttendees: () => void }) {
+function StatsPanel({ counts, programTitle, attendanceFilter = "", onViewAttendees }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; programTitle: string; attendanceFilter?: AttendanceFilter; onViewAttendees: () => void }) {
+  const activeCard = attendanceFilter === "billeting" ? "billeting" : attendanceFilter === "non-billeting" ? "non-billeting" : "confirmed";
   const cards = [
-    { label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "coral", icon: <UsersRound size={19} />, note: "Everyone coming together" },
-    { label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
-    { label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
+    { id: "confirmed", label: "CONFIRMED ATTENDEES", details: counts.confirmed, color: "coral", icon: <UsersRound size={19} />, note: "Everyone coming together" },
+    { id: "billeting", label: "WITH BILLETING", details: counts.billeted, color: "plum", icon: <DoorOpen size={19} />, note: "A room for the night" },
+    { id: "non-billeting", label: "WITHOUT BILLETING", details: counts.noBilleting, color: "amber", icon: <Flower2 size={19} />, note: "Making their own way" },
   ];
-  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle}</p></div><button type="button" className="attendee-view-button" onClick={onViewAttendees} aria-haspopup="dialog">View</button></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
+  return <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle}</p></div><button type="button" className="attendee-view-button" onClick={onViewAttendees} aria-haspopup="dialog">View</button></div><div className="stats-grid">{cards.map((card) => <article key={card.label} className={`clay-card stat-card stat-${card.color}${card.id === activeCard ? " stat-card-mobile-active" : ""}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>)}</div></section>;
 }
 
 function ConfirmedAttendeesModal({ attendees, onClose }: { attendees: AttendeeSummary[]; onClose: () => void }) {
