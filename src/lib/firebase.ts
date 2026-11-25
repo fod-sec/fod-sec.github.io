@@ -79,6 +79,7 @@ export type AttendeeRecord = {
   contactNo: string;
   email: string;
   billeting: "Yes" | "No";
+  includeInRoomAssignment?: boolean;
   foodAllergy: string;
   createdBy: string;
   createdAt?: unknown;
@@ -91,6 +92,7 @@ export type AttendeeSummary = {
   sexAtBirth: "Male" | "Female";
   office?: string;
   billeting: "Yes" | "No";
+  includeInRoomAssignment?: boolean;
   createdAt?: unknown;
 };
 

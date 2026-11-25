@@ -17,12 +17,13 @@ service cloud.firestore {
 
     function validSummary(data, programId) {
       return data.keys().hasAll(['programId', 'name', 'sexAtBirth', 'office', 'billeting', 'createdAt'])
-        && data.keys().hasOnly(['programId', 'name', 'sexAtBirth', 'office', 'billeting', 'createdAt'])
+        && data.keys().hasOnly(['programId', 'name', 'sexAtBirth', 'office', 'billeting', 'includeInRoomAssignment', 'createdAt'])
         && data.programId == programId
         && data.name is string && data.name.size() > 1 && data.name.size() <= 180
         && data.sexAtBirth in ['Male', 'Female']
         && data.office is string && data.office.size() > 0 && data.office.size() <= 200
         && data.billeting in ['Yes', 'No']
+        && (!data.keys().hasAny(['includeInRoomAssignment']) || data.includeInRoomAssignment is bool)
         && data.createdAt == request.time;
     }
 
@@ -35,7 +36,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'programId', 'firstName', 'middleName', 'lastName', 'suffix', 'sexAtBirth',
           'province', 'municipality', 'barangay', 'office', 'position', 'contactNo',
-          'email', 'billeting', 'foodAllergy', 'createdBy', 'createdAt'
+          'email', 'billeting', 'includeInRoomAssignment', 'foodAllergy', 'createdBy', 'createdAt'
         ])
         && data.programId == programId
         && data.firstName is string && data.firstName.size() > 0 && data.firstName.size() <= 100
@@ -51,6 +52,7 @@ service cloud.firestore {
         && data.contactNo is string && data.contactNo.size() > 5 && data.contactNo.size() <= 40
         && data.email is string && data.email.size() > 4 && data.email.size() <= 254
         && data.billeting in ['Yes', 'No']
+        && (!data.keys().hasAny(['includeInRoomAssignment']) || data.includeInRoomAssignment is bool)
         && data.foodAllergy is string && data.foodAllergy.size() <= 500
         && data.createdBy == request.auth.uid
         && data.createdAt == request.time;
