@@ -19,6 +19,8 @@ Firebase web settings are in `src/lib/firebase.ts` and can be overridden with th
 4. Create the admin's email/password account in Authentication. In Firestore, add `admins/{AUTH_UID}` with `{ "enabled": true }` to grant that account admin access. Admin documents can only be provisioned through the Firebase console or trusted admin tooling.
 5. The first admin can add programs and rooms after signing in. A program must exist before attendees can confirm attendance.
 
+The **Attendance Here** check-in is available from the program's Date From through Date To, inclusive, using the `Asia/Manila` calendar date. Firestore rules compare the server submission time against Manila-time bounds stored on the program, so direct writes outside that window are rejected. Only enabled admins can read `dailyAttendance` records, and they appear in the admin workspace under Daily Check-ins. The updated app adds or refreshes those timestamp bounds when an admin opens the program list or saves a program.
+
 The shared access code is `fod`, matching the requested entry flow. It is a front-end entry gate, so it should not be treated as a private credential; Firestore rules separately protect attendee contact details and restrict management actions to the `admins` collection.
 
 ## GitHub Pages

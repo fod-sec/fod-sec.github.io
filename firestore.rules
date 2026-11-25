@@ -62,6 +62,40 @@ service cloud.firestore {
         && data.createdAt == request.time;
     }
 
+    function validDailyAttendance(data, programId) {
+      return data.keys().hasAll([
+          'programId', 'firstName', 'middleName', 'lastName', 'suffix', 'office', 'position',
+          'province', 'municipality', 'barangay', 'contactNo', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'programId', 'firstName', 'middleName', 'lastName', 'suffix', 'office', 'position',
+          'province', 'municipality', 'barangay', 'contactNo', 'createdAt'
+        ])
+        && data.programId == programId
+        && data.firstName is string && data.firstName.size() > 0 && data.firstName.size() <= 100
+        && data.middleName is string && data.middleName.size() <= 100
+        && data.lastName is string && data.lastName.size() > 0 && data.lastName.size() <= 100
+        && data.suffix in ['', 'Jr.', 'Sr.', 'II', 'III', 'IV']
+        && data.office is string && data.office.size() > 0 && data.office.size() <= 200
+        && data.position is string && data.position.size() > 0 && data.position.size() <= 160
+        && data.province in ['Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands', 'Surigao del Norte', 'Surigao del Sur']
+        && data.municipality is string && data.municipality.size() > 0 && data.municipality.size() <= 120
+        && data.barangay is string && data.barangay.size() > 0 && data.barangay.size() <= 120
+        && data.contactNo is string && data.contactNo.size() >= 6 && data.contactNo.size() <= 40
+        && data.createdAt == request.time;
+    }
+
+    function programAllowsDailyAttendance(programId) {
+      let path = /databases/$(database)/documents/programs/$(programId);
+      let program = get(path).data;
+      return exists(path)
+        && program.keys().hasAll(['attendanceStartAt', 'attendanceEndExclusive'])
+        && program.attendanceStartAt is timestamp
+        && program.attendanceEndExclusive is timestamp
+        && request.time >= program.attendanceStartAt
+        && request.time < program.attendanceEndExclusive;
+    }
+
     function validContest(data) {
       return data.keys().hasAll([
           'programId', 'name', 'date', 'time', 'mechanics', 'criteria', 'createdAt', 'updatedAt'
@@ -116,6 +150,14 @@ service cloud.firestore {
         && validSummary(request.resource.data, request.resource.data.programId)
         && exists(/databases/$(database)/documents/programs/$(request.resource.data.programId));
       allow update, delete: if isAdmin();
+    }
+
+    match /dailyAttendance/{recordId} {
+      allow get, list: if isAdmin();
+      allow create: if isAnonymousUser()
+        && validDailyAttendance(request.resource.data, request.resource.data.programId)
+        && programAllowsDailyAttendance(request.resource.data.programId);
+      allow update, delete: if false;
     }
 
     match /rooms/{roomId} {

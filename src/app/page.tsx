@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import {
-  collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query,
-  serverTimestamp, setDoc, updateDoc, writeBatch,
+  addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query,
+  serverTimestamp, setDoc, Timestamp, updateDoc, writeBatch,
 } from "firebase/firestore";
 import {
   onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, signOut,
@@ -17,13 +17,19 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import locations from "@/data/locations.json";
-import { auth, db, type AttendeeRecord, type AttendeeSummary, type ContestCriterion, type ContestEntry, type ProgramFlowItem, type ProgramRecord, type RoomAssignment, type RoomRecord } from "@/lib/firebase";
+import { auth, db, type AttendeeRecord, type AttendeeSummary, type ContestCriterion, type ContestEntry, type DailyAttendanceRecord, type ProgramFlowItem, type ProgramRecord, type RoomAssignment, type RoomRecord } from "@/lib/firebase";
 
 type View = "home" | "program" | "contest" | "rooms" | "programs" | "contest-entries" | "room-management";
 type AttendanceFilter = "" | "billeting" | "non-billeting";
 type Role = "guest" | "admin" | null;
 type GeoCity = { name: string; barangays: string[] };
 type GeoProvince = { name: string; cities: GeoCity[] };
+type DailyAttendanceValues = {
+  firstName: string; middleName: string; lastName: string; suffix: string;
+  office: string; position: string; province: string; municipality: string;
+  barangay: string; contactNo: string;
+};
+type DailyAttendanceConfirmation = DailyAttendanceValues & { programTitle: string; attendanceDate: string };
 type AttendeeFormValues = {
   firstName: string; middleName: string; lastName: string; suffix: string;
   sexAtBirth: "Male" | "Female"; province: string; municipality: string;
@@ -46,8 +52,13 @@ const provinceData = allProvinceData
   .filter((entry) => regionXIIIProvinceNames.has(entry.name))
   .map((entry) => entry.name === "Agusan del Norte"
     ? { ...entry, cities: [...entry.cities, ...butuanCity].sort((a, b) => a.name.localeCompare(b.name)) }
-    : entry);
+    : entry)
+  .sort((a, b) => a.name.localeCompare(b.name, "en"));
 const suffixes = ["Jr.", "Sr.", "II", "III", "IV"];
+const emptyDailyAttendance: DailyAttendanceValues = {
+  firstName: "", middleName: "", lastName: "", suffix: "", office: "", position: "",
+  province: "", municipality: "", barangay: "", contactNo: "",
+};
 const officeOptions = [
   "AFD", "AMAD", "APCO ADN", "APCO ADS", "APCO PDI", "APCO SDN", "APCO SDS",
   "Banner Corn Program", "Banner HVCDP", "Banner Livestock Program", "Banner NUPAP", "Banner OAP", "Banner Rice Program",
@@ -79,6 +90,53 @@ function dateLabel(value: string, options: Intl.DateTimeFormatOptions = { month:
   if (!value) return "Date to be announced";
   const date = new Date(`${value}T12:00:00`);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-PH", options).format(date);
+}
+
+function manilaDateFor(value: Date) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function manilaDateToday() {
+  return manilaDateFor(new Date());
+}
+
+function isCalendarDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function isAttendanceDate(program: ProgramRecord, today: string) {
+  return isCalendarDate(program.dateFrom)
+    && isCalendarDate(program.dateTo)
+    && program.dateFrom <= program.dateTo
+    && today >= program.dateFrom
+    && today <= program.dateTo;
+}
+
+function attendanceDateBounds(dateFrom: string, dateTo: string) {
+  if (!isCalendarDate(dateFrom) || !isCalendarDate(dateTo) || dateFrom > dateTo) return null;
+  const start = new Date(`${dateFrom}T00:00:00+08:00`);
+  const endExclusive = new Date(`${dateTo}T00:00:00+08:00`);
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  return {
+    attendanceStartAt: Timestamp.fromDate(start),
+    attendanceEndExclusive: Timestamp.fromDate(endExclusive),
+  };
+}
+
+function recordAttendanceDate(record: DailyAttendanceRecord) {
+  const date = (record.createdAt as { toDate?: () => Date } | undefined)?.toDate?.();
+  return date ? manilaDateFor(date) : "";
+}
+
+function programAttendanceWindow(program: ProgramRecord) {
+  if (!isCalendarDate(program.dateFrom) || !isCalendarDate(program.dateTo) || program.dateFrom > program.dateTo) return "Attendance dates not set";
+  return `${dateLabel(program.dateFrom)} – ${dateLabel(program.dateTo)}`;
 }
 
 function formatTime(value: string) {
@@ -139,14 +197,20 @@ export default function Home() {
   const [contests, setContests] = useState<ContestEntry[]>([]);
   const [summaries, setSummaries] = useState<AttendeeSummary[]>([]);
   const [attendees, setAttendees] = useState<AttendeeRecord[]>([]);
+  const [dailyAttendance, setDailyAttendance] = useState<DailyAttendanceRecord[]>([]);
   const [rooms, setRooms] = useState<RoomRecord[]>([]);
   const [assignments, setAssignments] = useState<RoomAssignment[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState("");
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("");
   const [view, setView] = useState<View>("home");
   const [selectedDay, setSelectedDay] = useState("");
+  const [todayInManila, setTodayInManila] = useState("");
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [dailyAttendanceOpen, setDailyAttendanceOpen] = useState(false);
+  const [dailyAttendanceSending, setDailyAttendanceSending] = useState(false);
+  const [dailyAttendanceConfirmation, setDailyAttendanceConfirmation] = useState<DailyAttendanceConfirmation | null>(null);
   const [attendanceSheetOpen, setAttendanceSheetOpen] = useState(false);
+  const [actualAttendanceSheetOpen, setActualAttendanceSheetOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [programModal, setProgramModal] = useState<ProgramRecord | "new" | null>(null);
   const [contestModal, setContestModal] = useState<ContestEntry | "new" | null>(null);
@@ -156,6 +220,13 @@ export default function Home() {
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [attendeeSending, setAttendeeSending] = useState(false);
+
+  useEffect(() => {
+    const refreshDate = () => setTodayInManila(manilaDateToday());
+    refreshDate();
+    const interval = window.setInterval(refreshDate, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const notice = useCallback((text: string, kind: "success" | "error" = "success") => {
     setToast({ text, kind });
@@ -199,7 +270,18 @@ export default function Home() {
   useEffect(() => {
     if (role !== "guest" && role !== "admin") return;
     const stopPrograms = onSnapshot(query(collection(db, "programs"), orderBy("dateFrom", "asc")), (snapshot) => {
-      setPrograms(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ProgramRecord)));
+      const programRecords = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ProgramRecord));
+      setPrograms(programRecords);
+      if (role === "admin") snapshot.docs.forEach((entry) => {
+        const programData = entry.data();
+        const bounds = attendanceDateBounds(String(programData.dateFrom ?? ""), String(programData.dateTo ?? ""));
+        if (!bounds) return;
+        const storedStart = (programData.attendanceStartAt as { toMillis?: () => number } | undefined)?.toMillis?.();
+        const storedEnd = (programData.attendanceEndExclusive as { toMillis?: () => number } | undefined)?.toMillis?.();
+        if (storedStart !== bounds.attendanceStartAt.toMillis() || storedEnd !== bounds.attendanceEndExclusive.toMillis()) {
+          void updateDoc(doc(db, "programs", entry.id), bounds).catch((error) => notice(friendlyError(error), "error"));
+        }
+      });
     }, (error) => notice(friendlyError(error), "error"));
     const stopContests = onSnapshot(collection(db, "contests"), (snapshot) => {
       setContests(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as ContestEntry)));
@@ -217,6 +299,7 @@ export default function Home() {
     if (role !== "admin") {
       setAttendees([]);
       setRooms([]);
+      setDailyAttendance([]);
       return;
     }
     const stopAttendees = onSnapshot(collection(db, "attendees"), (snapshot) => {
@@ -225,7 +308,10 @@ export default function Home() {
     const stopRooms = onSnapshot(collection(db, "rooms"), (snapshot) => {
       setRooms(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as RoomRecord)));
     }, (error) => notice(friendlyError(error), "error"));
-    return () => { stopAttendees(); stopRooms(); };
+    const stopDailyAttendance = onSnapshot(collection(db, "dailyAttendance"), (snapshot) => {
+      setDailyAttendance(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() } as DailyAttendanceRecord)));
+    }, (error) => notice(friendlyError(error), "error"));
+    return () => { stopAttendees(); stopRooms(); stopDailyAttendance(); };
   }, [role, notice]);
 
   useEffect(() => {
@@ -315,7 +401,7 @@ export default function Home() {
     window.localStorage.removeItem(ACCESS_STORAGE_KEY);
     await signOut(auth);
     setView("home");
-    setPrograms([]); setContests([]); setSummaries([]); setAssignments([]); setAttendees([]); setRooms([]);
+    setPrograms([]); setContests([]); setSummaries([]); setAssignments([]); setAttendees([]); setRooms([]); setDailyAttendance([]);
   }
 
   async function saveProgram(values: Omit<ProgramRecord, "id">, id?: string) {
@@ -324,6 +410,7 @@ export default function Home() {
       const programId = id ?? doc(collection(db, "programs")).id;
       await setDoc(doc(db, "programs", programId), {
         ...values,
+        ...(attendanceDateBounds(values.dateFrom, values.dateTo) ?? {}),
         updatedAt: serverTimestamp(),
         ...(id ? {} : { createdAt: serverTimestamp() }),
       }, { merge: true });
@@ -475,6 +562,30 @@ export default function Home() {
     finally { setAttendeeSending(false); }
   }
 
+  async function submitDailyAttendance(values: DailyAttendanceValues) {
+    if (!user || !selectedProgram) return;
+    const attendanceDate = manilaDateToday();
+    if (!isAttendanceDate(selectedProgram, attendanceDate)) {
+      notice("Attendance is only available during this program’s scheduled dates.", "error");
+      return;
+    }
+    setDailyAttendanceSending(true);
+    try {
+      await addDoc(collection(db, "dailyAttendance"), {
+        programId: selectedProgram.id,
+        firstName: values.firstName.trim(), middleName: values.middleName.trim(), lastName: values.lastName.trim(), suffix: values.suffix,
+        office: values.office, position: values.position.trim(), province: values.province, municipality: values.municipality,
+        barangay: values.barangay, contactNo: values.contactNo.trim(), createdAt: serverTimestamp(),
+      });
+      setDailyAttendanceOpen(false);
+      setDailyAttendanceConfirmation({ ...values, programTitle: selectedProgram.title, attendanceDate });
+    } catch (error) {
+      notice(friendlyError(error), "error");
+    } finally {
+      setDailyAttendanceSending(false);
+    }
+  }
+
   async function updateRoomAssignmentApproval(attendeeId: string, approval: "Approved" | "Disapproved") {
     const attendee = attendees.find((entry) => entry.id === attendeeId);
     if (!user || role !== "admin" || !attendee) return;
@@ -551,7 +662,8 @@ export default function Home() {
 
           {view === "home" && <>
             <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} attendanceFilter={attendanceFilter} onAttendanceFilterChange={setAttendanceFilter} />
-            <StatsPanel counts={counts} summaries={selectedSummaries} programTitle={selectedProgram?.title ?? "Select a program"} attendanceFilter={attendanceFilter} isAdmin={role === "admin"} canViewAttendanceSheet={role === "admin"} onApprovalChange={updateRoomAssignmentApproval} onViewAttendanceSheet={() => setAttendanceSheetOpen(true)} />
+            <StatsPanel counts={counts} summaries={selectedSummaries} programTitle={selectedProgram?.title ?? "Select a program"} attendanceFilter={attendanceFilter} isAdmin={role === "admin"} canViewAttendanceSheet={role === "admin"} onApprovalChange={updateRoomAssignmentApproval} onViewConfirmationAttendanceSheet={() => setAttendanceSheetOpen(true)} onViewActualAttendanceSheet={() => setActualAttendanceSheetOpen(true)} />
+            {role === "admin" && <DailyAttendancePanel program={selectedProgram} records={dailyAttendance.filter((entry) => entry.programId === selectedProgramId)} />}
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
                 <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
@@ -560,7 +672,7 @@ export default function Home() {
             </section>
           </>}
 
-          {view === "program" && <ProgramPage onViewMap={() => setMapOpen(true)} programs={programs} program={selectedProgram} onSelect={setSelectedProgramId} selectedId={selectedProgramId} flow={visibleFlow} days={flowDays} activeDay={day} onDayChange={setSelectedDay} onConfirm={() => selectedProgram && setAttendanceOpen(true)} />}
+          {view === "program" && <ProgramPage onViewMap={() => setMapOpen(true)} programs={programs} program={selectedProgram} onSelect={setSelectedProgramId} selectedId={selectedProgramId} flow={visibleFlow} days={flowDays} activeDay={day} onDayChange={setSelectedDay} onConfirm={() => selectedProgram && setAttendanceOpen(true)} attendanceAvailable={Boolean(selectedProgram && todayInManila && isAttendanceDate(selectedProgram, todayInManila))} attendanceWindow={selectedProgram ? programAttendanceWindow(selectedProgram) : "Attendance dates not set"} onAttendanceHere={() => selectedProgram && todayInManila && isAttendanceDate(selectedProgram, todayInManila) && setDailyAttendanceOpen(true)} />}
           {view === "contest" && <ContestPage contests={programContests} programs={programs} selectedId={selectedProgramId} onSelect={setSelectedProgramId} />}
           {view === "rooms" && <RoomAssignmentPage assignments={programAssignments} programs={programs} selectedId={selectedProgramId} onSelect={setSelectedProgramId} />}
           {view === "programs" && <ProgramManagement programs={programs} onCreate={() => setProgramModal("new")} onEdit={(program) => setProgramModal(program)} onDelete={removeProgram} />}
@@ -573,7 +685,10 @@ export default function Home() {
 
       {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><a className="button button-primary" href={VENUE_DIRECTIONS_URL} target="_blank" rel="noopener noreferrer">Get Direction <ArrowRight size={16} /></a></div></ModalFrame>}
       {attendanceSheetOpen && role === "admin" && selectedProgram && <AttendanceSheetModal program={selectedProgram} attendees={selectedProgramAttendees} onClose={() => setAttendanceSheetOpen(false)} />}
+      {actualAttendanceSheetOpen && role === "admin" && selectedProgram && <AttendanceSheetModal program={selectedProgram} attendees={[]} dailyAttendance={dailyAttendance.filter((entry) => entry.programId === selectedProgramId)} kind="actual" onClose={() => setActualAttendanceSheetOpen(false)} />}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
+      {dailyAttendanceOpen && selectedProgram && <DailyAttendanceModal program={selectedProgram} busy={dailyAttendanceSending} onClose={() => !dailyAttendanceSending && setDailyAttendanceOpen(false)} onSubmit={submitDailyAttendance} />}
+      {dailyAttendanceConfirmation && <DailyAttendanceConfirmationModal record={dailyAttendanceConfirmation} onClose={() => setDailyAttendanceConfirmation(null)} />}
       {programModal !== null && <ProgramModal key={programModal === "new" ? "new" : programModal.id} program={programModal === "new" ? null : programModal} busy={busy} onClose={() => setProgramModal(null)} onSave={saveProgram} />}
       {contestModal !== null && <ContestModal key={contestModal === "new" ? `new-${selectedProgramId}` : contestModal.id} programs={programs} defaultProgramId={selectedProgramId} contest={contestModal === "new" ? null : contestModal} busy={busy} onClose={() => setContestModal(null)} onSave={saveContest} />}
       {roomModal !== null && <RoomModal key={roomModal === "new" ? `new-${selectedProgramId}` : roomModal.id} programId={selectedProgramId} room={roomModal === "new" ? null : roomModal} busy={busy} onClose={() => setRoomModal(null)} onSave={saveRoom} />}
@@ -595,7 +710,7 @@ function ProgramChooser({ programs, selectedId, onChange, attendanceFilter, onAt
   return <div className={`program-chooser${onAttendanceFilterChange ? " program-chooser-mobile-filter" : ""}`}><div className="chooser-label"><span className="chooser-icon"><CalendarDays size={17} /></span><span><small>SHOWING ATTENDANCE FOR</small><strong>{programs.find((program) => program.id === selectedId)?.title ?? "No program selected"}</strong></span></div><div className="chooser-controls"><label className="select-shell"><span className="sr-only">Select program</span><select value={selectedId} onChange={(event) => onChange(event.target.value)} disabled={!programs.length}><option value="">Choose a program</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}</select><ChevronDown size={16} /></label>{onAttendanceFilterChange && <label className="select-shell attendance-filter-shell"><span className="sr-only">Filter attendance summary</span><select value={attendanceFilter ?? ""} onChange={(event) => onAttendanceFilterChange(event.target.value as AttendanceFilter)}><option value="">Please Select</option><option value="billeting">Billeting</option><option value="non-billeting">Non-billeting</option></select><ChevronDown size={16} /></label>}</div></div>;
 }
 
-function StatsPanel({ counts, summaries, programTitle, attendanceFilter = "", isAdmin, canViewAttendanceSheet, onApprovalChange, onViewAttendanceSheet }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; summaries: AttendeeSummary[]; programTitle: string; attendanceFilter?: AttendanceFilter; isAdmin: boolean; canViewAttendanceSheet: boolean; onApprovalChange: (id: string, approval: "Approved" | "Disapproved") => Promise<void>; onViewAttendanceSheet: () => void }) {
+function StatsPanel({ counts, summaries, programTitle, attendanceFilter = "", isAdmin, canViewAttendanceSheet, onApprovalChange, onViewConfirmationAttendanceSheet, onViewActualAttendanceSheet }: { counts: { confirmed: { male: number; female: number; total: number }; billeted: { male: number; female: number; total: number }; noBilleting: { male: number; female: number; total: number } }; summaries: AttendeeSummary[]; programTitle: string; attendanceFilter?: AttendanceFilter; isAdmin: boolean; canViewAttendanceSheet: boolean; onApprovalChange: (id: string, approval: "Approved" | "Disapproved") => Promise<void>; onViewConfirmationAttendanceSheet: () => void; onViewActualAttendanceSheet: () => void }) {
   const [peopleListBilleting, setPeopleListBilleting] = useState<"Yes" | "No" | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
   const activeCard = attendanceFilter === "billeting" ? "billeting" : attendanceFilter === "non-billeting" ? "non-billeting" : "confirmed";
@@ -610,7 +725,7 @@ function StatsPanel({ counts, summaries, programTitle, attendanceFilter = "", is
     finally { setSavingIds((previous) => { const next = new Set(previous); next.delete(id); return next; }); }
   }
   return <>
-    <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle}</p></div>{canViewAttendanceSheet && <button type="button" className="attendee-view-button" onClick={onViewAttendanceSheet} aria-haspopup="dialog">Attendance Sheet</button>}</div><div className="stats-grid">{cards.map((card) => {
+    <section className="stats-section"><div className="section-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> ATTENDEE SUMMARY</span><h2>Attendance overview.</h2><p>{programTitle}</p></div>{canViewAttendanceSheet && <div className="attendance-sheet-actions"><button type="button" className="attendee-view-button" onClick={onViewConfirmationAttendanceSheet} aria-haspopup="dialog">Confirmation Attendance Sheet</button><button type="button" className="attendee-view-button actual-attendance-sheet-button" onClick={onViewActualAttendanceSheet} aria-haspopup="dialog">Actual Attendance Sheet</button></div>}</div><div className="stats-grid">{cards.map((card) => {
       const billetingValue = card.id === "billeting" ? "Yes" : card.id === "non-billeting" ? "No" : null;
       return <article key={card.label} className={`clay-card stat-card stat-${card.color}${card.id === activeCard ? " stat-card-mobile-active" : ""}`}><div className="stat-top"><span className="stat-icon">{card.icon}</span><span className="stat-label">{billetingValue ? <button type="button" className="stat-label-button" aria-haspopup="dialog" onClick={() => setPeopleListBilleting(billetingValue)}>{card.label}</button> : card.label}</span></div><div className="stat-main"><strong>{card.details.total}</strong><span>people</span></div><div className="stat-divider" /><div className="gender-counts"><div><span className="gender-label"><i className="gender-dot male-dot" />Male</span><strong>{card.details.male}</strong></div><div><span className="gender-label"><i className="gender-dot female-dot" />Female</span><strong>{card.details.female}</strong></div></div><p className="stat-note">{card.note}</p></article>;
     })}</div></section>
@@ -657,14 +772,18 @@ function BilletingPeopleModal({ billeting, attendees, isAdmin, savingIds, onAppr
   </ModalFrame>;
 }
 
-function AttendanceSheetModal({ program, attendees, onClose }: { program: ProgramRecord; attendees: AttendeeRecord[]; onClose: () => void }) {
+function AttendanceSheetModal({ program, attendees, dailyAttendance = [], kind = "confirmation", onClose }: { program: ProgramRecord; attendees: AttendeeRecord[]; dailyAttendance?: DailyAttendanceRecord[]; kind?: "confirmation" | "actual"; onClose: () => void }) {
   const days = useMemo(() => attendanceDays(program), [program]);
   const [selectedDate, setSelectedDate] = useState(days[0] ?? "");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState("");
   const sheetRef = useRef<HTMLElement>(null);
+  const isActual = kind === "actual";
   const activeDate = days.includes(selectedDate) ? selectedDate : days[0] ?? "";
-  const sortedAttendees = useMemo(() => [...attendees].sort((a, b) => attendanceSheetName(a).localeCompare(attendanceSheetName(b), "en", { sensitivity: "base" })), [attendees]);
+  const sortedAttendees = useMemo(() => {
+    const entries = isActual ? dailyAttendance.filter((record) => recordAttendanceDate(record) === activeDate) : attendees;
+    return [...entries].sort((a, b) => attendanceSheetName(a).localeCompare(attendanceSheetName(b), "en", { sensitivity: "base" }));
+  }, [attendees, dailyAttendance, isActual, activeDate]);
   const rowCount = Math.max(23, sortedAttendees.length);
   const printableDate = activeDate ? dateLabel(activeDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "Date to be announced";
 
@@ -675,7 +794,7 @@ function AttendanceSheetModal({ program, attendees, onClose }: { program: Progra
     try {
       const html2pdf = (await import("html2pdf.js")).default;
       const safeTitle = program.title.trim().replace(/[<>:"|?*\u0000-\u001f]/g, "-").replace(/[\\/]/g, "-").replace(/\s+/g, "-").slice(0, 80) || "program";
-      const filename = `${safeTitle}-${activeDate || "undated"}-attendance-sheet.pdf`;
+      const filename = `${safeTitle}-${activeDate || "undated"}-${isActual ? "actual" : "confirmation"}-attendance-sheet.pdf`;
       await html2pdf().set({
         margin: 0.5,
         filename,
@@ -717,7 +836,7 @@ function AttendanceSheetModal({ program, attendees, onClose }: { program: Progra
     }
   }
 
-  return <ModalFrame title="Attendance sheet" eyebrow="DAILY ATTENDANCE" onClose={onClose} className="attendance-sheet-modal" printable>
+  return <ModalFrame title={isActual ? "Actual Attendance Sheet" : "Confirmation Attendance Sheet"} eyebrow={isActual ? "ACTUAL ATTENDANCE" : "CONFIRMED ATTENDANCE"} onClose={onClose} className="attendance-sheet-modal" printable>
     <div className="attendance-sheet-controls">
       <label className="field"><span>Attendance date</span><select value={activeDate} onChange={(event) => setSelectedDate(event.target.value)} disabled={!days.length}>{days.length ? days.map((date) => <option key={date} value={date}>{dateLabel(date, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</option>) : <option value="">No event dates available</option>}</select></label>
       <p>Choose a day, then print or download the attendance sheet.</p>
@@ -725,9 +844,9 @@ function AttendanceSheetModal({ program, attendees, onClose }: { program: Progra
       <button type="button" className="button button-primary" onClick={downloadPdf} disabled={pdfBusy}><Download size={16} /> {pdfBusy ? "Creating PDF…" : "Download PDF"}</button>
       {pdfError && <p className="attendance-sheet-error" role="alert">{pdfError}</p>}
     </div>
-    <div className="attendance-sheet-preview-scroll"><article ref={sheetRef} className="attendance-sheet-print" aria-label={`Attendance sheet for ${printableDate}`}>
+    <div className="attendance-sheet-preview-scroll"><article ref={sheetRef} className="attendance-sheet-print" aria-label={`${isActual ? "Actual" : "Confirmation"} attendance sheet for ${printableDate}`}>
       <header className="attendance-sheet-letterhead"><img src="/da-caraga-logo.jpg" alt="Department of Agriculture Caraga Region logo" /><div><p>Republic of the Philippines</p><strong>DEPARTMENT OF AGRICULTURE</strong><p>Caraga Region</p><p>Capitol Site, Butuan City 8600</p></div></header>
-      <h1 className="attendance-sheet-title">ATTENDANCE SHEET</h1>
+      <h1 className="attendance-sheet-title">{isActual ? "ACTUAL ATTENDANCE SHEET" : "CONFIRMATION ATTENDANCE SHEET"}</h1>
       <div className="attendance-sheet-meta"><p><strong>Activity Title:</strong><span>{program.title}</span></p><p><strong>Venue:</strong><span>{program.venue}</span></p><p><strong>Date:</strong><span>{printableDate}</span></p></div>
       <table className="attendance-sheet-table">
         <colgroup><col className="attendance-col-number" /><col className="attendance-col-name" /><col className="attendance-col-office" /><col className="attendance-col-position" /><col className="attendance-col-contact" />{Array.from({ length: 6 }, (_, index) => <col key={index} className="attendance-col-signature" />)}</colgroup>
@@ -742,16 +861,54 @@ function AttendanceSheetModal({ program, attendees, onClose }: { program: Progra
   </ModalFrame>;
 }
 
-function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, onViewMap }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; onViewMap: () => void }) {
+function ProgramPage({ programs, program, selectedId, onSelect, flow, days, activeDay, onDayChange, onConfirm, onViewMap, attendanceAvailable, attendanceWindow, onAttendanceHere }: { programs: ProgramRecord[]; program: ProgramRecord | null; selectedId: string; onSelect: (id: string) => void; flow: ProgramFlowItem[]; days: string[]; activeDay: string; onDayChange: (day: string) => void; onConfirm: () => void; onViewMap: () => void; attendanceAvailable: boolean; attendanceWindow: string; onAttendanceHere: () => void }) {
   return <section className="content-section program-page">
     <div className="program-toolbar"><ProgramChooser programs={programs} selectedId={selectedId} onChange={onSelect} /><button type="button" className="button button-primary attendance-cta" disabled={!program} onClick={onConfirm}><CheckCircle2 size={17} /> Attendance confirmation</button></div>
     {program ? <>
-      <div className="program-hero clay-card"><span className="eyebrow">THE PROGRAM FLOW</span><h2>{program.title}</h2>{program.theme && <p className="program-theme">“{program.theme}”</p>}<p className="program-description">{program.description || "A thoughtful program, planned for a good gathering."}</p><div className="program-meta"><span><CalendarDays size={16} />{eventRange(program)}</span>{program.venue ? <button type="button" className="program-meta-location" onClick={onViewMap} aria-haspopup="dialog" aria-label="View map for event venue"><MapPin size={16} /><span>{program.venue}</span></button> : <span><MapPin size={16} />Venue to be announced</span>}</div></div>
+      <div className="program-hero clay-card"><div className="program-hero-topline"><span className="eyebrow">THE PROGRAM FLOW</span><div className="daily-attendance-action"><button type="button" className="daily-attendance-cta" disabled={!attendanceAvailable} onClick={onAttendanceHere} title={attendanceAvailable ? "Record your attendance for today" : `Available ${attendanceWindow}`}><CheckCircle2 size={17} /> Attendance Here</button>{!attendanceAvailable && <span className="daily-attendance-window">{attendanceWindow}</span>}</div></div><h2>{program.title}</h2>{program.theme && <p className="program-theme">“{program.theme}”</p>}<p className="program-description">{program.description || "A thoughtful program, planned for a good gathering."}</p><div className="program-meta"><span><CalendarDays size={16} />{eventRange(program)}</span>{program.venue ? <button type="button" className="program-meta-location" onClick={onViewMap} aria-haspopup="dialog" aria-label="View map for event venue"><MapPin size={16} /><span>{program.venue}</span></button> : <span><MapPin size={16} />Venue to be announced</span>}</div></div>
       <div className="flow-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> THE DAY, AT A GLANCE</span><h2>Program flow</h2></div><span className="flow-count">{flow.length} {flow.length === 1 ? "SESSION" : "SESSIONS"}</span></div>
       {days.length > 1 && <div className="day-tabs" role="tablist">{days.map((flowDay, index) => <button role="tab" aria-selected={activeDay === flowDay} className={activeDay === flowDay ? "day-tab day-tab-active" : "day-tab"} key={flowDay} onClick={() => onDayChange(flowDay)}><small>DAY {index + 1}</small><strong>{dateLabel(flowDay, { month: "short", day: "numeric" })}</strong></button>)}</div>}
       <div className="timeline">{flow.length ? flow.map((entry, index) => <article className="timeline-item" key={entry.id}><div className="timeline-rail"><span className="timeline-dot">{index === 0 ? <Flower2 size={13} /> : <span />}</span></div><div className="timeline-card clay-card"><div className="timeline-time">{entry.startTime ? formatTime(entry.startTime) : "Time TBA"}{entry.endTime && <> <span>–</span> {formatTime(entry.endTime)}</>}</div><div className="timeline-copy"><h3>{entry.title}</h3>{entry.description && <p>{entry.description}</p>}{entry.speaker && <span className="timeline-speaker">{entry.speaker}</span>}</div></div></article>) : <div className="empty-state clay-card"><div className="empty-icon"><CalendarDays size={22} /></div><h3>Program flow is on its way.</h3><p>The daily schedule will appear here as soon as it is shared.</p></div>}</div>
     </> : <div className="empty-state clay-card"><div className="empty-icon"><CalendarDays size={22} /></div><h3>The program is getting ready.</h3><p>There are no programs to show just yet. Check back soon.</p></div>}
   </section>;
+}
+
+function DailyAttendancePanel({ program, records }: { program: ProgramRecord | null; records: DailyAttendanceRecord[] }) {
+  const sortedRecords = [...records].sort((a, b) => recordAttendanceDate(b).localeCompare(recordAttendanceDate(a)) || a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
+  return <section className="daily-attendance-panel clay-card">
+    <div className="table-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> DAILY CHECK-INS</span><h2>{program?.title ?? "Choose a program"}</h2><p>Attendance Here submissions, grouped by the day they were recorded.</p></div><span className="table-total"><strong>{records.length}</strong> {records.length === 1 ? "CHECK-IN" : "CHECK-INS"}</span></div>
+    {sortedRecords.length ? <div className="daily-attendance-table-wrap"><table className="daily-attendance-table"><thead><tr><th>Date</th><th>Name</th><th>Office & position</th><th>Location</th><th>Contact no.</th></tr></thead><tbody>{sortedRecords.map((record) => <tr key={record.id}><td>{dateLabel(recordAttendanceDate(record))}</td><td>{displayName(record)}</td><td>{record.office}<small>{record.position}</small></td><td>{record.barangay}, {record.municipality}, {record.province}</td><td>{record.contactNo}</td></tr>)}</tbody></table></div> : <div className="daily-attendance-empty">{program ? "No daily check-ins have been submitted for this program." : "Select a program to view its daily check-ins."}</div>}
+  </section>;
+}
+
+function DailyAttendanceModal({ program, busy, onClose, onSubmit }: { program: ProgramRecord; busy: boolean; onClose: () => void; onSubmit: (values: DailyAttendanceValues) => Promise<void> }) {
+  const [values, setValues] = useState(emptyDailyAttendance);
+  const province = provinceData.find((entry) => entry.name === values.province);
+  const city = province?.cities.find((entry) => entry.name === values.municipality);
+  const setField = <K extends keyof DailyAttendanceValues>(key: K, value: DailyAttendanceValues[K]) => setValues((previous) => ({ ...previous, [key]: value }));
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void onSubmit(values);
+  }
+
+  return <ModalFrame title="Mark your attendance" eyebrow="ATTENDANCE HERE" onClose={onClose} className="daily-attendance-modal"><form className="modal-form" onSubmit={submit}>
+    <div className="form-event-line"><span><CalendarDays size={15} /> {program.title}</span><span>{dateLabel(manilaDateToday())}</span></div>
+    <div className="daily-attendance-intro">Enter your details to record your attendance for today.</div>
+    <div className="form-section-title"><span>01</span><strong>Your name</strong></div>
+    <div className="form-grid form-grid-name"><Field label="First name"><input autoComplete="given-name" value={values.firstName} onChange={(event) => setField("firstName", event.target.value)} required /></Field><Field label="Middle name" optional><input autoComplete="additional-name" value={values.middleName} onChange={(event) => setField("middleName", event.target.value)} /></Field><Field label="Last name"><input autoComplete="family-name" value={values.lastName} onChange={(event) => setField("lastName", event.target.value)} required /></Field><Field label="Suffix" optional><select value={values.suffix} onChange={(event) => setField("suffix", event.target.value)}><option value="">None</option>{suffixes.map((suffix) => <option key={suffix}>{suffix}</option>)}</select></Field></div>
+    <div className="form-section-title"><span>02</span><strong>Office & position</strong></div>
+    <div className="form-grid form-grid-two"><Field label="Office"><select value={values.office} onChange={(event) => setField("office", event.target.value)} required><option value="">Select office</option>{officeOptions.map((office) => <option key={office}>{office}</option>)}<option>Others</option></select></Field><Field label="Position"><input value={values.position} onChange={(event) => setField("position", event.target.value)} required /></Field></div>
+    <div className="form-section-title"><span>03</span><strong>Where you’re from</strong></div>
+    <div className="form-grid form-grid-three"><Field label="Province"><select value={values.province} onChange={(event) => { setField("province", event.target.value); setField("municipality", ""); setField("barangay", ""); }} required><option value="">Select province</option>{provinceData.map((entry) => <option key={entry.name}>{entry.name}</option>)}</select></Field><Field label="Municipality / city"><select value={values.municipality} onChange={(event) => { setField("municipality", event.target.value); setField("barangay", ""); }} disabled={!province} required><option value="">{province ? "Select municipality" : "Choose a province first"}</option>{province?.cities.map((entry) => <option key={entry.name}>{entry.name}</option>)}</select></Field><Field label="Barangay"><select value={values.barangay} onChange={(event) => setField("barangay", event.target.value)} disabled={!city} required><option value="">{city ? "Select barangay" : "Choose a municipality first"}</option>{city?.barangays.map((entry) => <option key={entry}>{entry}</option>)}</select></Field></div>
+    <div className="form-section-title"><span>04</span><strong>Contact</strong></div>
+    <Field label="Contact no."><input autoComplete="tel" type="tel" value={values.contactNo} onChange={(event) => setField("contactNo", event.target.value)} placeholder="09xx xxx xxxx" required /></Field>
+    <p className="form-privacy"><CheckCircle2 size={15} /> Your check-in details are visible to Secretariat administrators.</p>
+    <div className="modal-actions"><button type="button" className="button button-quiet" disabled={busy} onClick={onClose}>Cancel</button><button type="submit" className="button button-primary" disabled={busy}>{busy ? <><span className="button-spinner" /> Recording…</> : <>Submit attendance <Check size={16} /></>}</button></div>
+  </form></ModalFrame>;
+}
+
+function DailyAttendanceConfirmationModal({ record, onClose }: { record: DailyAttendanceConfirmation; onClose: () => void }) {
+  return <ModalFrame title="Attendance confirmed" eyebrow="CHECK-IN COMPLETE" onClose={onClose} className="daily-attendance-confirmation"><div className="daily-attendance-confirmation-body"><span className="daily-attendance-confirmation-icon"><Check size={24} /></span><p>Your attendance for <strong>{record.programTitle}</strong> has been recorded.</p><div className="daily-attendance-confirmation-details"><span>{dateLabel(record.attendanceDate)}</span><strong>{displayName(record)}</strong><span>{record.office} · {record.position}</span></div><button type="button" className="button button-primary" onClick={onClose}>Done <Check size={16} /></button></div></ModalFrame>;
 }
 
 function RoomAssignmentPage({ assignments, programs, selectedId, onSelect }: { assignments: RoomAssignment[]; programs: ProgramRecord[]; selectedId: string; onSelect: (id: string) => void }) {

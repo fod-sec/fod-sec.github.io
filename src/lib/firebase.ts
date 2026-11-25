@@ -39,6 +39,8 @@ export type ProgramRecord = {
   theme: string;
   dateFrom: string;
   dateTo: string;
+  attendanceStartAt?: unknown;
+  attendanceEndExclusive?: unknown;
   venue: string;
   flow: ProgramFlowItem[];
   createdAt?: unknown;
@@ -95,6 +97,22 @@ export type AttendeeSummary = {
   billeting: "Yes" | "No";
   includeInRoomAssignment?: boolean;
   roomAssignmentApproval?: "Pending" | "Approved" | "Disapproved";
+  createdAt?: unknown;
+};
+
+export type DailyAttendanceRecord = {
+  id: string;
+  programId: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  suffix: string;
+  office: string;
+  position: string;
+  province: string;
+  municipality: string;
+  barangay: string;
+  contactNo: string;
   createdAt?: unknown;
 };
 
