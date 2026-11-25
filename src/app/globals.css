@@ -290,6 +290,7 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 .attendance-sheet-modal { width: min(100%, 1220px); max-height: calc(100svh - 34px); }
 .billeting-people-modal { width: min(100%, 620px); }
 .billeting-people-content { padding: 17px 22px 21px; display: grid; gap: 12px; }
+.billeting-approval-note { margin: 0; padding: 9px 11px; border-radius: 9px; color: #806f78; background: #f4efeb; font-size: 9px; line-height: 1.5; }
 .billeting-people-controls { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(175px, .8fr); align-items: end; gap: 12px; }
 .billeting-people-controls .field { gap: 6px; }
 .billeting-search-wrap { position: relative; }
@@ -301,8 +302,13 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 .billeting-person-copy { min-width: 0; display: grid; gap: 3px; }
 .billeting-person-copy strong { overflow-wrap: anywhere; color: var(--plum); font-size: 11px; font-weight: 650; }
 .billeting-person-copy span { overflow-wrap: anywhere; color: #92868e; font-size: 9px; }
+.billeting-person-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .billeting-person-sex { flex: 0 0 auto; padding: 5px 8px; border-radius: 20px; color: #806974; background: #f0e9ed; font-size: 8px; font-weight: 700; }
 .billeting-person-sex.female { color: #9c666d; background: #f7e9e9; }
+.billeting-approval-control { min-width: 133px; display: grid; gap: 3px; }
+.billeting-approval-control select { width: 100%; min-height: 34px; padding: 6px 25px 6px 9px; border: 1px solid #e8e1dc; border-radius: 8px; color: #564552; background: #fffefa; font-size: 9px; cursor: pointer; }
+.billeting-approval-control select:disabled { color: #92868e; background: #f4f1ee; cursor: not-allowed; }
+.billeting-approval-control small { color: #a09299; font-size: 7px; text-align: right; }
 .billeting-people-empty { min-height: 100px; display: grid; place-items: center; align-content: center; gap: 8px; color: #988a93; text-align: center; font-size: 10px; }
 .billeting-people-empty svg { color: #a28293; }
 .attendance-sheet-controls { padding: 14px 20px; display: grid; grid-template-columns: minmax(180px, .8fr) minmax(180px, 1.35fr) auto auto; align-items: end; gap: 14px; border-bottom: 1px solid var(--line); }

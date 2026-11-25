@@ -80,6 +80,7 @@ export type AttendeeRecord = {
   email: string;
   billeting: "Yes" | "No";
   includeInRoomAssignment?: boolean;
+  roomAssignmentApproval?: "Pending" | "Approved" | "Disapproved";
   foodAllergy: string;
   createdBy: string;
   createdAt?: unknown;
@@ -93,6 +94,7 @@ export type AttendeeSummary = {
   office?: string;
   billeting: "Yes" | "No";
   includeInRoomAssignment?: boolean;
+  roomAssignmentApproval?: "Pending" | "Approved" | "Disapproved";
   createdAt?: unknown;
 };
 
