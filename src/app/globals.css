@@ -192,15 +192,31 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
 .program-meta-location:hover { color: var(--coral-deep); }
 .program-meta-location:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 3px; }
 .daily-attendance-panel { margin-top: 22px; padding: 20px; overflow: hidden; }
-.daily-attendance-panel .table-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 0 15px; }
+.daily-attendance-panel .table-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin: 0 0 15px; }
 .daily-attendance-panel .table-heading h2 { margin: 8px 0 0; color: var(--plum-deep); font: 500 23px/1.15 var(--font-serif); letter-spacing: -.025em; }
 .daily-attendance-panel .table-heading p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.daily-attendance-panel-actions { display: grid; justify-items: end; gap: 7px; flex: 0 0 auto; }
+.daily-absentees-button { min-height: 34px; padding: 0 13px; border: 1px solid #E8DCE5; border-radius: 18px; color: #74526C; background: #F4EDF2; font: 700 10px var(--font-sans); cursor: pointer; transition: background .16s, border-color .16s, transform .16s; }
+.daily-absentees-button:hover:not(:disabled) { border-color: #dacbd7; background: #eee4ec; transform: translateY(-1px); }
 .daily-attendance-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.55); }
 .daily-attendance-table { width: 100%; min-width: 760px; border-collapse: collapse; text-align: left; }
 .daily-attendance-table th { padding: 10px 12px; color: #8c7e82; background: #f5f0ed; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .daily-attendance-table td { padding: 11px 12px; border-top: 1px solid #eee8e4; color: var(--text); font-size: 11px; vertical-align: top; }
 .daily-attendance-table td small { display: block; margin-top: 3px; color: #968b8f; font-size: 10px; }
 .daily-attendance-empty { padding: 25px 14px; border: 1px dashed #ddd2ce; border-radius: 11px; color: var(--muted); font-size: 11px; text-align: center; }
+.absentees-modal { width: min(100%, 880px); }
+.absentees-content { padding: 16px 20px 20px; display: grid; gap: 13px; }
+.absentees-controls { display: grid; grid-template-columns: minmax(185px, .9fr) minmax(190px, 1.2fr) minmax(160px, .9fr); align-items: end; gap: 12px; }
+.absentees-controls .field { gap: 6px; }
+.absentees-summary { color: #80747c; font-size: 10px; }
+.absentees-summary strong { color: var(--plum); font-size: 13px; }
+.absentees-summary span { color: #998e94; }
+.absentees-table-wrap { max-height: min(52vh, 460px); overflow: auto; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.55); }
+.absentees-table { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; }
+.absentees-table th { position: sticky; top: 0; z-index: 1; padding: 10px 12px; color: #8c7e82; background: #f5f0ed; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.absentees-table td { padding: 10px 12px; border-top: 1px solid #eee8e4; color: var(--text); font-size: 11px; vertical-align: top; }
+.absentees-table td:first-child { width: 50px; color: #9a8b91; }
+.absentees-empty { padding: 27px 14px; border: 1px dashed #ddd2ce; border-radius: 11px; color: var(--muted); font-size: 11px; text-align: center; }
 .daily-attendance-modal { width: min(100%, 760px); }
 .daily-attendance-intro { margin: 3px 0 14px; color: var(--muted); font-size: 11px; }
 .daily-attendance-confirmation { width: min(100%, 430px); }
@@ -599,6 +615,11 @@ button:disabled { cursor: not-allowed !important; opacity: .55; }
   .daily-attendance-panel .table-heading { align-items: flex-start; }
   .daily-attendance-panel .table-heading h2 { font-size: 20px; }
   .daily-attendance-panel .table-heading p { max-width: 250px; line-height: 1.5; }
+  .daily-attendance-panel-actions { gap: 8px; }
+  .daily-absentees-button { min-height: 32px; padding: 0 10px; font-size: 9px; }
+  .absentees-content { padding: 14px 15px 17px; }
+  .absentees-controls { grid-template-columns: 1fr; gap: 10px; }
+  .absentees-table-wrap { max-height: calc(100svh - 300px); }
   .daily-attendance-modal .modal-form { padding: 13px 15px 16px; }
 }
 @media (max-width: 680px) {

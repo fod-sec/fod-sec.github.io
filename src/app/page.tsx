@@ -76,6 +76,12 @@ function displayName(person: Pick<AttendeeFormValues, "firstName" | "middleName"
   return [person.firstName, person.middleName, person.lastName, person.suffix].filter(Boolean).join(" ");
 }
 
+function attendanceNameKey(person: Pick<DailyAttendanceValues, "firstName" | "middleName" | "lastName">) {
+  return [person.firstName, person.middleName, person.lastName]
+    .map((value) => value.trim().normalize("NFKC").replace(/\s+/g, " ").toLocaleLowerCase("en"))
+    .join("|");
+}
+
 function attendanceSheetName(person: Pick<AttendeeFormValues, "firstName" | "middleName" | "lastName" | "suffix">) {
   const firstName = person.firstName.trim();
   const lastName = person.lastName.trim();
@@ -211,6 +217,7 @@ export default function Home() {
   const [dailyAttendanceConfirmation, setDailyAttendanceConfirmation] = useState<DailyAttendanceConfirmation | null>(null);
   const [attendanceSheetOpen, setAttendanceSheetOpen] = useState(false);
   const [actualAttendanceSheetOpen, setActualAttendanceSheetOpen] = useState(false);
+  const [absenteesOpen, setAbsenteesOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [programModal, setProgramModal] = useState<ProgramRecord | "new" | null>(null);
   const [contestModal, setContestModal] = useState<ContestEntry | "new" | null>(null);
@@ -401,6 +408,7 @@ export default function Home() {
     window.localStorage.removeItem(ACCESS_STORAGE_KEY);
     await signOut(auth);
     setView("home");
+    setAbsenteesOpen(false);
     setPrograms([]); setContests([]); setSummaries([]); setAssignments([]); setAttendees([]); setRooms([]); setDailyAttendance([]);
   }
 
@@ -663,7 +671,7 @@ export default function Home() {
           {view === "home" && <>
             <ProgramChooser programs={programs} selectedId={selectedProgramId} onChange={setSelectedProgramId} attendanceFilter={attendanceFilter} onAttendanceFilterChange={setAttendanceFilter} />
             <StatsPanel counts={counts} summaries={selectedSummaries} programTitle={selectedProgram?.title ?? "Select a program"} attendanceFilter={attendanceFilter} isAdmin={role === "admin"} canViewAttendanceSheet={role === "admin"} onApprovalChange={updateRoomAssignmentApproval} onViewConfirmationAttendanceSheet={() => setAttendanceSheetOpen(true)} onViewActualAttendanceSheet={() => setActualAttendanceSheetOpen(true)} />
-            {role === "admin" && <DailyAttendancePanel program={selectedProgram} records={dailyAttendance.filter((entry) => entry.programId === selectedProgramId)} />}
+            {role === "admin" && <DailyAttendancePanel program={selectedProgram} records={dailyAttendance.filter((entry) => entry.programId === selectedProgramId)} onViewAbsentees={() => selectedProgram && setAbsenteesOpen(true)} />}
             <section className="dashboard-lower">
               <div className="clay-card home-feature">
                 <div className="feature-icon"><CalendarDays size={21} /></div><div className="feature-copy"><span className="eyebrow">UP NEXT</span><h2>{selectedProgram?.title ?? "Your program is taking shape"}</h2><p>{selectedProgram ? <><span>{eventRange(selectedProgram)}</span> · {selectedProgram.venue ? <button type="button" className="location-link" onClick={() => setMapOpen(true)} aria-haspopup="dialog" aria-label={`View map for ${selectedProgram.venue}`}><MapPin size={14} aria-hidden="true" /><span>{selectedProgram.venue}</span></button> : "Venue to be announced"}</> : "Once a program is published, its schedule and attendee counts will appear here."}</p></div>
@@ -686,6 +694,7 @@ export default function Home() {
       {mapOpen && selectedProgram?.venue && <ModalFrame title={selectedProgram.venue} eyebrow="EVENT LOCATION" onClose={() => setMapOpen(false)} className="map-modal"><div className="map-modal-frame"><iframe title={`Map showing ${selectedProgram.venue}`} src={VENUE_MAP_EMBED_URL} loading="eager" referrerPolicy="no-referrer-when-downgrade" allowFullScreen /></div><div className="map-modal-details"><a className="button button-primary" href={VENUE_DIRECTIONS_URL} target="_blank" rel="noopener noreferrer">Get Direction <ArrowRight size={16} /></a></div></ModalFrame>}
       {attendanceSheetOpen && role === "admin" && selectedProgram && <AttendanceSheetModal program={selectedProgram} attendees={selectedProgramAttendees} onClose={() => setAttendanceSheetOpen(false)} />}
       {actualAttendanceSheetOpen && role === "admin" && selectedProgram && <AttendanceSheetModal program={selectedProgram} attendees={[]} dailyAttendance={dailyAttendance.filter((entry) => entry.programId === selectedProgramId)} kind="actual" onClose={() => setActualAttendanceSheetOpen(false)} />}
+      {absenteesOpen && role === "admin" && selectedProgram && <AbsenteesModal program={selectedProgram} attendees={selectedProgramAttendees} dailyAttendance={dailyAttendance.filter((entry) => entry.programId === selectedProgramId)} onClose={() => setAbsenteesOpen(false)} />}
       {attendanceOpen && selectedProgram && <AttendanceModal program={selectedProgram} busy={attendeeSending} existingNames={selectedSummaries.map((entry) => entry.name.toLowerCase())} onClose={() => !attendeeSending && setAttendanceOpen(false)} onSubmit={submitAttendance} />}
       {dailyAttendanceOpen && selectedProgram && <DailyAttendanceModal program={selectedProgram} busy={dailyAttendanceSending} onClose={() => !dailyAttendanceSending && setDailyAttendanceOpen(false)} onSubmit={submitDailyAttendance} />}
       {dailyAttendanceConfirmation && <DailyAttendanceConfirmationModal record={dailyAttendanceConfirmation} onClose={() => setDailyAttendanceConfirmation(null)} />}
@@ -873,12 +882,51 @@ function ProgramPage({ programs, program, selectedId, onSelect, flow, days, acti
   </section>;
 }
 
-function DailyAttendancePanel({ program, records }: { program: ProgramRecord | null; records: DailyAttendanceRecord[] }) {
+function DailyAttendancePanel({ program, records, onViewAbsentees }: { program: ProgramRecord | null; records: DailyAttendanceRecord[]; onViewAbsentees: () => void }) {
   const sortedRecords = [...records].sort((a, b) => recordAttendanceDate(b).localeCompare(recordAttendanceDate(a)) || a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
   return <section className="daily-attendance-panel clay-card">
-    <div className="table-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> DAILY CHECK-INS</span><h2>{program?.title ?? "Choose a program"}</h2><p>Attendance Here submissions, grouped by the day they were recorded.</p></div><span className="table-total"><strong>{records.length}</strong> {records.length === 1 ? "CHECK-IN" : "CHECK-INS"}</span></div>
+    <div className="table-heading"><div><span className="eyebrow"><span className="eyebrow-line" /> DAILY CHECK-INS</span><h2>{program?.title ?? "Choose a program"}</h2><p>Attendance Here submissions, grouped by the day they were recorded.</p></div><div className="daily-attendance-panel-actions"><button type="button" className="daily-absentees-button" onClick={onViewAbsentees} disabled={!program} aria-haspopup="dialog">Absentees</button><span className="table-total"><strong>{records.length}</strong> {records.length === 1 ? "CHECK-IN" : "CHECK-INS"}</span></div></div>
     {sortedRecords.length ? <div className="daily-attendance-table-wrap"><table className="daily-attendance-table"><thead><tr><th>Date</th><th>Name</th><th>Office & position</th><th>Location</th><th>Contact no.</th></tr></thead><tbody>{sortedRecords.map((record) => <tr key={record.id}><td>{dateLabel(recordAttendanceDate(record))}</td><td>{displayName(record)}</td><td>{record.office}<small>{record.position}</small></td><td>{record.barangay}, {record.municipality}, {record.province}</td><td>{record.contactNo}</td></tr>)}</tbody></table></div> : <div className="daily-attendance-empty">{program ? "No daily check-ins have been submitted for this program." : "Select a program to view its daily check-ins."}</div>}
   </section>;
+}
+
+function AbsenteesModal({ program, attendees, dailyAttendance, onClose }: { program: ProgramRecord; attendees: AttendeeRecord[]; dailyAttendance: DailyAttendanceRecord[]; onClose: () => void }) {
+  const days = useMemo(() => attendanceDays(program), [program]);
+  const [selectedDate, setSelectedDate] = useState(days[0] ?? "");
+  const [search, setSearch] = useState("");
+  const [officeFilter, setOfficeFilter] = useState("");
+  const activeDate = days.includes(selectedDate) ? selectedDate : days[0] ?? "";
+  const checkedInNames = useMemo(() => new Set(dailyAttendance
+    .filter((record) => recordAttendanceDate(record) === activeDate)
+    .map(attendanceNameKey)), [dailyAttendance, activeDate]);
+  const absentAttendees = useMemo(() => attendees
+    .filter((attendee) => activeDate !== "" && !checkedInNames.has(attendanceNameKey(attendee)))
+    .sort((a, b) => attendanceSheetName(a).localeCompare(attendanceSheetName(b), "en", { sensitivity: "base" })), [attendees, checkedInNames, activeDate]);
+  const offices = useMemo(() => [...new Set(absentAttendees.map((attendee) => attendee.office.trim() || "Office not listed"))]
+    .sort((a, b) => a.localeCompare(b)), [absentAttendees]);
+  const filteredAttendees = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase("en");
+    return absentAttendees.filter((attendee) => {
+      const office = attendee.office.trim() || "Office not listed";
+      const matchesOffice = !officeFilter || office === officeFilter;
+      const searchable = `${displayName(attendee)} ${attendee.office} ${attendee.position}`.toLocaleLowerCase("en");
+      return matchesOffice && (!normalizedSearch || searchable.includes(normalizedSearch));
+    });
+  }, [absentAttendees, officeFilter, search]);
+  const checkedInCount = dailyAttendance.filter((record) => recordAttendanceDate(record) === activeDate).length;
+  const printableDate = activeDate ? dateLabel(activeDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "Date to be announced";
+
+  return <ModalFrame title="Absentees" eyebrow="ATTENDANCE RECONCILIATION" onClose={onClose} className="absentees-modal">
+    <div className="absentees-content">
+      <div className="absentees-controls">
+        <Field label="Attendance date"><select value={activeDate} onChange={(event) => setSelectedDate(event.target.value)} disabled={!days.length}>{days.length ? days.map((date) => <option key={date} value={date}>{dateLabel(date, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</option>) : <option value="">No event dates available</option>}</select></Field>
+        <Field label="Search name or office"><input type="search" autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search attendees" /></Field>
+        <Field label="Office"><select value={officeFilter} onChange={(event) => setOfficeFilter(event.target.value)}><option value="">All offices</option>{offices.map((office) => <option key={office} value={office}>{office}</option>)}</select></Field>
+      </div>
+      <div className="absentees-summary"><strong>{filteredAttendees.length}</strong> {filteredAttendees.length === 1 ? "absentee" : "absentees"} <span>· {checkedInCount} checked in on {printableDate}</span></div>
+      {filteredAttendees.length ? <div className="absentees-table-wrap"><table className="absentees-table"><thead><tr><th>No.</th><th>Name</th><th>Office</th><th>Position</th></tr></thead><tbody>{filteredAttendees.map((attendee, index) => <tr key={attendee.id}><td>{index + 1}</td><td>{displayName(attendee)}</td><td>{attendee.office || "Office not listed"}</td><td>{attendee.position}</td></tr>)}</tbody></table></div> : <div className="absentees-empty">{!days.length ? "No program dates are available for daily comparison." : !attendees.length ? "No confirmation attendance records are available for this program." : absentAttendees.length === 0 ? `No absentees for ${printableDate}.` : "No absentees match these filters."}</div>}
+    </div>
+  </ModalFrame>;
 }
 
 function DailyAttendanceModal({ program, busy, onClose, onSubmit }: { program: ProgramRecord; busy: boolean; onClose: () => void; onSubmit: (values: DailyAttendanceValues) => Promise<void> }) {
